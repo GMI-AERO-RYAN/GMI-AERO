@@ -88,13 +88,6 @@
     <div class="count" id="itemCount">0 article</div>
   </header>
 
-  <div class="panel" id="offlineWarning" style="display:none; border-color:var(--amber); background:#2a2410;">
-    <strong style="font-family:var(--mono); font-size:12px; color:var(--amber);">⚠ MODE LOCAL</strong>
-    <p style="font-size:12px; color:var(--ink-dim); margin:6px 0 0;">
-      Ce fichier est ouvert en dehors de Claude.ai : les données sont sauvegardées uniquement dans ce navigateur, sur cet appareil (pas de partage entre appareils). Utilise "⬇ Sauvegarde JSON" régulièrement pour ne rien perdre, ou ouvre ce fichier depuis Claude.ai pour profiter du mode partagé.
-    </p>
-  </div>
-
   <div class="panel">
     <div class="row">
       <button class="primary" id="btnStartScan">📷 Scanner un code</button>
@@ -248,6 +241,7 @@
       <button class="ghost icon-btn" id="btnExportJson">⬇ Sauvegarde JSON</button>
       <button class="ghost icon-btn" id="btnImportJson">⬆ Restaurer JSON</button>
       <input type="file" id="fileImportJson" accept="application/json" style="display:none;">
+      <button class="primary icon-btn" id="btnManualSave">💾 Sauvegarder</button>
       <span class="save-flag" id="saveFlag">chargement…</span>
     </div>
     <div id="tableWrap"></div>
@@ -288,9 +282,6 @@ async function storageSet(key, value, shared){
 function uid(){ return 'it_' + Date.now() + '_' + Math.random().toString(36).slice(2,7); }
 
 async function loadItems(){
-  if(!hasClaudeStorage){
-    document.getElementById('offlineWarning').style.display = 'block';
-  }
   try{
     const res = await storageGet(STORAGE_KEY, true);
     items = res && res.value ? JSON.parse(res.value) : [];
@@ -568,12 +559,34 @@ document.getElementById('btnStartScan').addEventListener('click', async ()=>{
       ()=>{ /* frame sans code détecté, on ignore */ }
     );
   }catch(err){
-    statusEl.textContent = '⚠ Caméra indisponible. Vérifiez les autorisations, ou ajoutez l\'article manuellement.';
+    console.error('Erreur caméra:', err);
+    statusEl.textContent = describeCameraError(err);
+    statusEl.className = 'status';
     document.getElementById('btnStartScan').style.display = 'inline-block';
     document.getElementById('btnStopScan').style.display = 'none';
     readerEl.style.display = 'none';
   }
 });
+
+function describeCameraError(err){
+  const name = err && err.name;
+  if(name === 'NotAllowedError' || name === 'PermissionDeniedError'){
+    return '⚠ Accès caméra refusé. Va dans les réglages de ton navigateur (ou de l\'appli) > Autorisations du site > Caméra, et autorise-la, puis recharge la page.';
+  }
+  if(name === 'NotFoundError' || name === 'DevicesNotFoundError'){
+    return '⚠ Aucune caméra détectée sur cet appareil.';
+  }
+  if(name === 'NotReadableError' || name === 'TrackStartError'){
+    return '⚠ La caméra est déjà utilisée par une autre application. Ferme les autres apps utilisant la caméra et réessaie.';
+  }
+  if(name === 'OverconstrainedError'){
+    return '⚠ Aucune caméra ne correspond aux réglages demandés (caméra arrière). Réessaie, ou utilise l\'ajout manuel.';
+  }
+  if(location.protocol !== 'https:' && location.hostname !== 'localhost'){
+    return '⚠ La caméra nécessite une connexion sécurisée (https). Utilise le lien/artefact Claude.ai plutôt qu\'un fichier local.';
+  }
+  return `⚠ Caméra indisponible (${name || (err && err.message) || 'raison inconnue'}). Vérifie les autorisations, ou ajoute l'article manuellement.`;
+}
 
 document.getElementById('btnStopScan').addEventListener('click', stopScan);
 
@@ -627,6 +640,14 @@ function normalizeIncoming(inc){
     note: inc.note || ''
   };
 }
+
+document.getElementById('btnManualSave').addEventListener('click', async ()=>{
+  clearTimeout(saveTimer);
+  saveRetryCount = 0;
+  document.getElementById('btnManualSave').disabled = true;
+  await doSave();
+  document.getElementById('btnManualSave').disabled = false;
+});
 
 // --- Sauvegarde / restauration JSON ---
 document.getElementById('btnExportJson').addEventListener('click', ()=>{
@@ -829,7 +850,8 @@ document.getElementById('btnStartCheckScan').addEventListener('click', async ()=
       ()=>{ /* frame sans code, on ignore */ }
     );
   }catch(err){
-    checkStatusEl.textContent = '⚠ Caméra indisponible. Vérifiez les autorisations.';
+    console.error('Erreur caméra (contrôle):', err);
+    checkStatusEl.textContent = describeCameraError(err);
     document.getElementById('btnStartCheckScan').style.display = 'inline-block';
     document.getElementById('btnStopCheckScan').style.display = 'none';
     readerEl.style.display = 'none';
