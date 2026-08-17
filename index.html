@@ -202,6 +202,7 @@
     </div>
     <div id="qrOutput" style="margin-top:14px; display:none;">
       <div id="qrCanvasWrap" style="background:#fff; padding:14px; border-radius:6px; display:inline-block;"></div>
+      <div id="qrInfo" style="margin-top:10px; font-size:13px; color:var(--ink-dim); line-height:1.6;"></div>
       <div class="row" style="margin-top:10px;">
         <button class="ghost" id="btnDownloadQr">⬇ Télécharger l'image</button>
         <button class="ghost" id="btnPrintQr">🖨 Imprimer l'étiquette</button>
@@ -429,6 +430,7 @@ function render(){
         saveItems();
         render();
       }
+      currentQrItem = item;
       document.getElementById('genPanel').style.display = 'block';
       document.getElementById('genPanel').scrollIntoView({behavior:'smooth', block:'start'});
       document.getElementById('genCode').value = item.code;
@@ -731,9 +733,28 @@ document.getElementById('fileImportJson').addEventListener('change', (e)=>{
 // --- Générateur de QR code ---
 let currentQr = null;
 let currentQrCode = null;
+let currentQrItem = null;
 
 function genUniqueCode(){
   return 'ART-' + Date.now().toString(36).toUpperCase() + '-' + Math.random().toString(36).slice(2,5).toUpperCase();
+}
+
+function buildItemInfoLines(item){
+  if(!item) return [];
+  const lines = [];
+  lines.push(item.name);
+  if(item.matType) lines.push('Type : ' + item.matType);
+  if(item.voltage) lines.push('Voltage : ' + item.voltage);
+  if(item.wattage) lines.push('Wattage : ' + item.wattage);
+  if(item.shape === 'round'){
+    if(item.diameterVal) lines.push('Ø ' + item.diameterVal + ' ' + (item.sizeUnit||'mm'));
+  }else{
+    if(item.lengthVal || item.widthVal) lines.push('Taille : ' + (item.lengthVal||0) + ' × ' + (item.widthVal||0) + ' ' + (item.sizeUnit||'mm'));
+  }
+  if(item.zones) lines.push('Zones : ' + item.zones);
+  if(item.connector) lines.push('Connectique : ' + item.connector);
+  if(item.specificity) lines.push(item.specificity);
+  return lines;
 }
 
 document.getElementById('btnOpenGen').addEventListener('click', ()=>{
@@ -741,6 +762,7 @@ document.getElementById('btnOpenGen').addEventListener('click', ()=>{
   document.getElementById('checkPanel').style.display = 'none';
   document.getElementById('genPanel').style.display = 'block';
   document.getElementById('genCode').value = genUniqueCode();
+  currentQrItem = null;
   document.getElementById('qrOutput').style.display = 'none';
 });
 document.getElementById('btnCloseGen').addEventListener('click', ()=>{
@@ -748,6 +770,7 @@ document.getElementById('btnCloseGen').addEventListener('click', ()=>{
 });
 document.getElementById('btnGenNew').addEventListener('click', ()=>{
   document.getElementById('genCode').value = genUniqueCode();
+  currentQrItem = null;
   document.getElementById('qrOutput').style.display = 'none';
 });
 
@@ -764,6 +787,10 @@ document.getElementById('btnGenerate').addEventListener('click', ()=>{
     colorLight: '#ffffff'
   });
   currentQrCode = text;
+  const infoLines = buildItemInfoLines(currentQrItem);
+  document.getElementById('qrInfo').innerHTML = infoLines.length
+    ? infoLines.map(escapeHtml).join('<br>')
+    : '';
   document.getElementById('qrOutput').style.display = 'block';
 });
 
@@ -785,12 +812,17 @@ document.getElementById('btnPrintQr').addEventListener('click', ()=>{
   const canvas = wrap.querySelector('canvas');
   const src = img ? img.src : (canvas ? canvas.toDataURL('image/png') : null);
   if(!src) return;
+  const infoLines = buildItemInfoLines(currentQrItem);
+  const infoHtml = infoLines.length
+    ? `<div style="font-family:sans-serif; font-size:13px; margin-top:6px; line-height:1.5;">${infoLines.map(escapeHtml).join('<br>')}</div>`
+    : '';
   const w = window.open('', '_blank');
   w.document.write(`
     <html><head><title>Étiquette</title></head>
     <body style="text-align:center; font-family:sans-serif; margin-top:40px;">
       <img src="${src}" style="width:220px;height:220px;"/>
-      <p style="font-family:monospace; font-size:13px;">${escapeHtml(currentQrCode)}</p>
+      <p style="font-family:monospace; font-size:13px; margin-bottom:0;">${escapeHtml(currentQrCode)}</p>
+      ${infoHtml}
       <script>window.onload = () => window.print();<\/script>
     </body></html>
   `);
