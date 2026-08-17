@@ -6,6 +6,8 @@
 <title>Inventaire</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/html5-qrcode/2.3.8/html5-qrcode.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
 <style>
   :root{
     --bg: #14171a;
@@ -257,10 +259,31 @@ let items = [];
 let html5QrCode = null;
 let editingId = null;
 
-// Certains environnements (fichier ouvert directement, hors artefact Claude)
-// n'exposent pas window.storage. On bascule alors sur localStorage, qui
-// fonctionne dans un navigateur classique mais reste local à cet appareil
-// (le "mode partagé" ne fonctionne pleinement que dans l'artefact Claude).
+// --- Firebase (sauvegarde partagée en temps réel entre tous les appareils) ---
+const firebaseConfig = {
+  apiKey: "AIzaSyADdW2tV1T6uHjKVwRBX5ATqASIp4EMwiY",
+  authDomain: "gmi-aero-inventaire.firebaseapp.com",
+  databaseURL: "https://gmi-aero-inventaire-default-rtdb.europe-west1.firebasedatabase.app",
+  projectId: "gmi-aero-inventaire",
+  storageBucket: "gmi-aero-inventaire.firebasestorage.app",
+  messagingSenderId: "64022222913",
+  appId: "1:64022222913:web:2bce98d049ed4d33e8cec0"
+};
+
+let firebaseReady = false;
+let fbRef = null;
+try{
+  const fbApp = firebase.initializeApp(firebaseConfig);
+  fbRef = firebase.database().ref('inventaire/items');
+  firebaseReady = true;
+}catch(e){
+  console.error('Firebase indisponible:', e);
+  firebaseReady = false;
+}
+
+// Si Firebase n'est pas disponible (pas de connexion, erreur de config...),
+// on retombe sur window.storage (dans Claude.ai) puis sur localStorage
+// (stockage propre à cet appareil uniquement, en dernier recours).
 const hasClaudeStorage = typeof window.storage !== 'undefined' && window.storage !== null;
 
 async function storageGet(key, shared){
@@ -283,6 +306,25 @@ async function storageSet(key, value, shared){
 function uid(){ return 'it_' + Date.now() + '_' + Math.random().toString(36).slice(2,7); }
 
 async function loadItems(){
+  if(firebaseReady){
+    document.getElementById('saveFlag').textContent = 'connexion…';
+    fbRef.on('value', (snapshot)=>{
+      const val = snapshot.val();
+      items = val && val.itemsJson ? JSON.parse(val.itemsJson) : [];
+      render();
+      document.getElementById('saveFlag').textContent = '✓ synchronisé (tous appareils)';
+    }, (err)=>{
+      console.error('Erreur de lecture Firebase:', err);
+      document.getElementById('saveFlag').textContent = `⚠ Firebase indisponible (${err.message||err})`;
+      firebaseReady = false;
+      loadItemsFallback();
+    });
+    return;
+  }
+  await loadItemsFallback();
+}
+
+async function loadItemsFallback(){
   try{
     const res = await storageGet(STORAGE_KEY, true);
     items = res && res.value ? JSON.parse(res.value) : [];
@@ -291,8 +333,8 @@ async function loadItems(){
   }
   render();
   document.getElementById('saveFlag').textContent = hasClaudeStorage
-    ? 'sauvegardé (partagé)'
-    : '⚠ stockage local uniquement (hors Claude.ai)';
+    ? 'sauvegardé (partagé Claude.ai)'
+    : '⚠ stockage local uniquement (cet appareil)';
 }
 
 let saveTimer = null;
@@ -313,11 +355,16 @@ async function saveItems(){
 
 async function doSave(){
   try{
-    const result = await storageSet(STORAGE_KEY, JSON.stringify(items), true);
-    if(!result){
-      throw new Error('réponse vide du stockage');
+    if(firebaseReady){
+      await fbRef.set({ itemsJson: JSON.stringify(items), updatedAt: Date.now() });
+      document.getElementById('saveFlag').textContent = '✓ synchronisé (tous appareils)';
+    }else{
+      const result = await storageSet(STORAGE_KEY, JSON.stringify(items), true);
+      if(!result){
+        throw new Error('réponse vide du stockage');
+      }
+      document.getElementById('saveFlag').textContent = '✓ sauvegardé';
     }
-    document.getElementById('saveFlag').textContent = '✓ sauvegardé';
     saveRetryCount = 0;
   }catch(e){
     console.error('Erreur de sauvegarde:', e);
