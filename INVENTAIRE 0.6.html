@@ -1,0 +1,930 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Inventaire</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html5-qrcode/2.3.8/html5-qrcode.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<style>
+  :root{
+    --bg: #14171a;
+    --panel: #1d2126;
+    --panel-2: #23282e;
+    --line: #33393f;
+    --ink: #eceff1;
+    --ink-dim: #9aa4ab;
+    --amber: #f5b400;
+    --amber-dim: #7a5a00;
+    --ok: #4caf7d;
+    --danger: #e0654f;
+    --mono: 'Courier New', ui-monospace, monospace;
+    --sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0; background:var(--bg); color:var(--ink);
+    font-family:var(--sans); min-height:100vh; padding:16px;
+  }
+  .wrap{max-width:900px; margin:0 auto;}
+  header{
+    display:flex; align-items:baseline; justify-content:space-between;
+    border-bottom:3px solid var(--amber); padding-bottom:10px; margin-bottom:16px;
+    flex-wrap:wrap; gap:8px;
+  }
+  h1{
+    font-family:var(--mono); font-size:22px; letter-spacing:1px; margin:0;
+    text-transform:uppercase;
+  }
+  h1 span{color:var(--amber);}
+  .count{font-family:var(--mono); color:var(--ink-dim); font-size:13px;}
+  .panel{
+    background:var(--panel); border:1px solid var(--line); border-radius:6px;
+    padding:14px; margin-bottom:14px;
+  }
+  .row{display:flex; gap:8px; flex-wrap:wrap;}
+  button{
+    font-family:var(--sans); font-weight:600; font-size:14px;
+    border:1px solid var(--line); background:var(--panel-2); color:var(--ink);
+    padding:10px 14px; border-radius:5px; cursor:pointer;
+  }
+  button:active{transform:translateY(1px);}
+  button.primary{background:var(--amber); color:#1a1400; border-color:var(--amber);}
+  button.danger-outline{color:var(--danger); border-color:var(--danger); background:transparent;}
+  button.ghost{background:transparent;}
+  input, select{
+    font-family:var(--sans); font-size:14px; background:var(--bg); color:var(--ink);
+    border:1px solid var(--line); border-radius:5px; padding:9px 10px;
+  }
+  #reader{width:100%; max-width:420px; border-radius:6px; overflow:hidden; margin-top:10px; border:1px solid var(--line);}
+  .status{font-family:var(--mono); font-size:12px; color:var(--ink-dim); margin-top:6px;}
+  .status.ok{color:var(--ok);}
+  .form-grid{display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-top:10px;}
+  .form-grid .full{grid-column:1/-1;}
+  label{font-size:11px; text-transform:uppercase; letter-spacing:0.5px; color:var(--ink-dim); display:block; margin-bottom:4px;}
+  table{width:100%; border-collapse:collapse; font-size:13px;}
+  th{
+    text-align:left; font-family:var(--mono); text-transform:uppercase; font-size:11px;
+    color:var(--ink-dim); border-bottom:1px solid var(--line); padding:8px 6px;
+  }
+  td{border-bottom:1px solid var(--line); padding:6px; vertical-align:middle;}
+  tr:hover{background:var(--panel-2);}
+  td input, td select{width:100%; padding:6px; font-size:13px;}
+  .code-cell{font-family:var(--mono); color:var(--amber); font-size:12px;}
+  .empty{text-align:center; color:var(--ink-dim); padding:30px 10px; font-family:var(--mono); font-size:13px;}
+  .toolbar{display:flex; justify-content:space-between; align-items:center; gap:8px; flex-wrap:wrap; margin-bottom:10px;}
+  .search{flex:1; min-width:160px;}
+  .low{color:var(--danger); font-weight:700;}
+  .save-flag{font-family:var(--mono); font-size:11px; color:var(--ink-dim);}
+  .icon-btn{padding:6px 9px; font-size:13px;}
+  footer{margin-top:20px; text-align:center; color:var(--ink-dim); font-family:var(--mono); font-size:11px;}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <h1>Inventaire<span>_</span></h1>
+    <div class="count" id="itemCount">0 article</div>
+  </header>
+
+  <div class="panel" id="offlineWarning" style="display:none; border-color:var(--amber); background:#2a2410;">
+    <strong style="font-family:var(--mono); font-size:12px; color:var(--amber);">⚠ MODE LOCAL</strong>
+    <p style="font-size:12px; color:var(--ink-dim); margin:6px 0 0;">
+      Ce fichier est ouvert en dehors de Claude.ai : les données sont sauvegardées uniquement dans ce navigateur, sur cet appareil (pas de partage entre appareils). Utilise "⬇ Sauvegarde JSON" régulièrement pour ne rien perdre, ou ouvre ce fichier depuis Claude.ai pour profiter du mode partagé.
+    </p>
+  </div>
+
+  <div class="panel">
+    <div class="row">
+      <button class="primary" id="btnStartScan">📷 Scanner un code</button>
+      <button class="ghost" id="btnStopScan" style="display:none;">Arrêter le scan</button>
+      <button class="ghost" id="btnManual">➕ Ajouter manuellement</button>
+      <button class="ghost" id="btnOpenGen">🏷 Générer un QR code</button>
+      <button class="ghost" id="btnOpenCheck">📋 Contrôle d'inventaire</button>
+    </div>
+    <div id="reader" style="display:none;"></div>
+    <div class="status" id="scanStatus"></div>
+
+    <div class="form-grid" id="formGrid" style="display:none;">
+      <div>
+        <label>Code / référence</label>
+        <input id="fCode" placeholder="Scanné automatiquement ou saisi">
+      </div>
+      <div>
+        <label>Nom de l'article</label>
+        <input id="fName" placeholder="Ex: Boîte de vis 4mm">
+      </div>
+      <div>
+        <label>Quantité</label>
+        <input id="fQty" type="number" min="0" value="1">
+      </div>
+      <div>
+        <label>Type de tapis</label>
+        <select id="fMatType">
+          <option value="Standard">Standard</option>
+          <option value="Stretchable">Stretchable</option>
+        </select>
+      </div>
+      <div>
+        <label>Voltage</label>
+        <input id="fVoltage" placeholder="Ex: 12V, 24V">
+      </div>
+      <div>
+        <label>Wattage</label>
+        <input id="fWattage" placeholder="Ex: 60W, 150W">
+      </div>
+      <div>
+        <label>Forme du tapis</label>
+        <select id="fShape">
+          <option value="rect">Rectangulaire (L × l)</option>
+          <option value="round">Ronde (Ø diamètre)</option>
+        </select>
+      </div>
+      <div id="fSizeRectWrap">
+        <label>Taille (L × l)</label>
+        <div class="row" style="gap:6px;">
+          <input id="fLength" type="number" min="0" step="any" placeholder="Longueur" style="flex:1;">
+          <span style="align-self:center; color:var(--ink-dim);">×</span>
+          <input id="fWidth" type="number" min="0" step="any" placeholder="Largeur" style="flex:1;">
+          <select id="fSizeUnit" style="width:70px;">
+            <option value="mm">mm</option>
+            <option value="in">in</option>
+          </select>
+        </div>
+      </div>
+      <div id="fSizeRoundWrap" style="display:none;">
+        <label>Diamètre (Ø)</label>
+        <div class="row" style="gap:6px;">
+          <input id="fDiameter" type="number" min="0" step="any" placeholder="Diamètre" style="flex:1;">
+          <select id="fSizeUnitRound" style="width:70px;">
+            <option value="mm">mm</option>
+            <option value="in">in</option>
+          </select>
+        </div>
+      </div>
+      <div>
+        <label>Nombre de zones</label>
+        <input id="fZones" type="number" min="0" placeholder="Ex: 4">
+      </div>
+      <div>
+        <label>Connectique</label>
+        <select id="fConnector">
+          <option value="S">S</option>
+          <option value="L">L</option>
+        </select>
+      </div>
+      <div>
+        <label>Spécificité</label>
+        <input id="fSpecificity" placeholder="Ex: renforcé, antidérapant...">
+      </div>
+      <div class="full">
+        <label>Emplacement / note</label>
+        <input id="fNote" placeholder="Ex: Étagère B3">
+      </div>
+      <div class="full row">
+        <button class="primary" id="btnSaveItem">Enregistrer l'article</button>
+        <button class="ghost" id="btnCancelForm">Annuler</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="panel" id="genPanel" style="display:none;">
+    <div class="row" style="justify-content:space-between; align-items:baseline;">
+      <strong style="font-family:var(--mono); font-size:13px; text-transform:uppercase; letter-spacing:0.5px;">🏷 Générateur de QR code</strong>
+      <button class="ghost icon-btn" id="btnCloseGen">✕</button>
+    </div>
+    <p style="color:var(--ink-dim); font-size:12px; margin:8px 0;">
+      Utile pour les articles sans code-barres d'origine : crée un QR code, imprime-le, colle-le sur l'article, puis scanne-le avec le bouton "Scanner un code" ci-dessus.
+    </p>
+    <div class="form-grid">
+      <div class="full">
+        <label>Contenu du code (identifiant unique)</label>
+        <input id="genCode" placeholder="Généré automatiquement">
+      </div>
+      <div class="full row">
+        <button class="primary" id="btnGenerate">Générer</button>
+        <button class="ghost" id="btnGenNew">🔄 Nouvel identifiant</button>
+      </div>
+    </div>
+    <div id="qrOutput" style="margin-top:14px; display:none;">
+      <div id="qrCanvasWrap" style="background:#fff; padding:14px; border-radius:6px; display:inline-block;"></div>
+      <div class="row" style="margin-top:10px;">
+        <button class="ghost" id="btnDownloadQr">⬇ Télécharger l'image</button>
+        <button class="ghost" id="btnPrintQr">🖨 Imprimer l'étiquette</button>
+        <button class="primary" id="btnUseCodeForItem">➕ Créer l'article avec ce code</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="panel" id="checkPanel" style="display:none;">
+    <div class="row" style="justify-content:space-between; align-items:baseline;">
+      <strong style="font-family:var(--mono); font-size:13px; text-transform:uppercase; letter-spacing:0.5px;">📋 Contrôle d'inventaire</strong>
+      <button class="ghost icon-btn" id="btnCloseCheck">✕</button>
+    </div>
+    <p style="color:var(--ink-dim); font-size:12px; margin:8px 0;">
+      Scanne chaque article présent en rayon les uns après les autres. Chaque scan compte +1 pour ce code. À la fin, applique pour mettre à jour les quantités réelles et enregistrer.
+    </p>
+    <div class="row">
+      <button class="primary" id="btnStartCheckScan">📷 Démarrer le scan continu</button>
+      <button class="ghost" id="btnStopCheckScan" style="display:none;">Arrêter le scan</button>
+    </div>
+    <div id="checkReader" style="display:none; max-width:420px; border-radius:6px; overflow:hidden; margin-top:10px; border:1px solid var(--line);"></div>
+    <div class="status" id="checkStatus"></div>
+
+    <div id="checkTableWrap" style="margin-top:14px;"></div>
+
+    <div class="row" style="margin-top:12px;">
+      <button class="primary" id="btnApplyCheck">✓ Appliquer et enregistrer</button>
+      <button class="ghost icon-btn" id="btnExportCheck">⬇ Exporter le rapport CSV</button>
+      <button class="danger-outline" id="btnResetCheck">Réinitialiser le comptage</button>
+    </div>
+  </div>
+
+  <div class="panel">
+    <div class="toolbar">
+      <input class="search" id="searchBox" placeholder="🔍 Rechercher par nom, code ou catégorie...">
+      <button class="ghost icon-btn" id="btnExport">⬇ Exporter CSV</button>
+      <button class="ghost icon-btn" id="btnExportJson">⬇ Sauvegarde JSON</button>
+      <button class="ghost icon-btn" id="btnImportJson">⬆ Restaurer JSON</button>
+      <input type="file" id="fileImportJson" accept="application/json" style="display:none;">
+      <span class="save-flag" id="saveFlag">chargement…</span>
+    </div>
+    <div id="tableWrap"></div>
+  </div>
+
+  <footer>⚠ Mode partagé : les données sont visibles et modifiables par toute personne ayant accès à cette application.</footer>
+</div>
+
+<script>
+const STORAGE_KEY = 'inventaire:items';
+let items = [];
+let html5QrCode = null;
+let editingId = null;
+
+// Certains environnements (fichier ouvert directement, hors artefact Claude)
+// n'exposent pas window.storage. On bascule alors sur localStorage, qui
+// fonctionne dans un navigateur classique mais reste local à cet appareil
+// (le "mode partagé" ne fonctionne pleinement que dans l'artefact Claude).
+const hasClaudeStorage = typeof window.storage !== 'undefined' && window.storage !== null;
+
+async function storageGet(key, shared){
+  if(hasClaudeStorage){
+    return window.storage.get(key, shared);
+  }
+  const raw = localStorage.getItem(key);
+  if(raw === null) throw new Error('clé introuvable (stockage local)');
+  return { key, value: raw, shared };
+}
+
+async function storageSet(key, value, shared){
+  if(hasClaudeStorage){
+    return window.storage.set(key, value, shared);
+  }
+  localStorage.setItem(key, value);
+  return { key, value, shared };
+}
+
+function uid(){ return 'it_' + Date.now() + '_' + Math.random().toString(36).slice(2,7); }
+
+async function loadItems(){
+  if(!hasClaudeStorage){
+    document.getElementById('offlineWarning').style.display = 'block';
+  }
+  try{
+    const res = await storageGet(STORAGE_KEY, true);
+    items = res && res.value ? JSON.parse(res.value) : [];
+  }catch(e){
+    items = [];
+  }
+  render();
+  document.getElementById('saveFlag').textContent = hasClaudeStorage
+    ? 'sauvegardé (partagé)'
+    : '⚠ stockage local uniquement (hors Claude.ai)';
+}
+
+let saveTimer = null;
+let saveRetryCount = 0;
+
+async function saveItems(){
+  // Regroupe les sauvegardes rapprochées (ex: scans rapides) pour éviter
+  // de dépasser la limite de requêtes, au lieu d'envoyer une requête par scan.
+  clearTimeout(saveTimer);
+  document.getElementById('saveFlag').textContent = 'sauvegarde…';
+  return new Promise((resolve)=>{
+    saveTimer = setTimeout(async ()=>{
+      await doSave();
+      resolve();
+    }, 400);
+  });
+}
+
+async function doSave(){
+  try{
+    const result = await storageSet(STORAGE_KEY, JSON.stringify(items), true);
+    if(!result){
+      throw new Error('réponse vide du stockage');
+    }
+    document.getElementById('saveFlag').textContent = '✓ sauvegardé';
+    saveRetryCount = 0;
+  }catch(e){
+    console.error('Erreur de sauvegarde:', e);
+    const detail = (e && (e.message || e.toString())) || 'raison inconnue';
+    document.getElementById('saveFlag').textContent = `⚠ échec de la sauvegarde (${detail})`;
+    // Une seule tentative de nouvel essai automatique après un court délai.
+    if(saveRetryCount < 1){
+      saveRetryCount++;
+      setTimeout(doSave, 2000);
+    }
+  }
+}
+
+function render(){
+  const q = document.getElementById('searchBox').value.trim().toLowerCase();
+  const filtered = items.filter(it =>
+    !q || (it.name||'').toLowerCase().includes(q) ||
+    (it.code||'').toLowerCase().includes(q) ||
+    (it.matType||'').toLowerCase().includes(q) ||
+    (it.voltage||'').toLowerCase().includes(q) ||
+    (it.specificity||'').toLowerCase().includes(q) ||
+    (it.note||'').toLowerCase().includes(q)
+  );
+  document.getElementById('itemCount').textContent =
+    items.length + (items.length>1 ? ' articles' : ' article');
+
+  const wrap = document.getElementById('tableWrap');
+  if(filtered.length === 0){
+    wrap.innerHTML = '<div class="empty">Aucun article. Scannez un code ou ajoutez-en un manuellement.</div>';
+    return;
+  }
+
+  let html = '<table><thead><tr><th>Code</th><th>Nom</th><th>Qté</th><th>Tapis</th><th>Voltage</th><th>Wattage</th><th>Forme</th><th>Longueur</th><th>Largeur</th><th>Ø</th><th>Unité</th><th>Zones</th><th>Connect.</th><th>Spécificité</th><th>Note</th><th></th></tr></thead><tbody>';
+  for(const it of filtered){
+    html += `<tr data-id="${it.id}">
+      <td class="code-cell">${escapeHtml(it.code||'—')}</td>
+      <td><input value="${escapeHtml(it.name)}" data-field="name"></td>
+      <td><input type="number" min="0" value="${it.qty}" data-field="qty" style="width:60px" class="${it.qty<=0?'low':''}"></td>
+      <td>
+        <select data-field="matType" style="width:100px">
+          <option value="Standard" ${it.matType==='Standard'?'selected':''}>Standard</option>
+          <option value="Stretchable" ${it.matType==='Stretchable'?'selected':''}>Stretchable</option>
+        </select>
+      </td>
+      <td><input value="${escapeHtml(it.voltage||'')}" data-field="voltage" style="width:70px" placeholder="V"></td>
+      <td><input value="${escapeHtml(it.wattage||'')}" data-field="wattage" style="width:70px" placeholder="W"></td>
+      <td>
+        <select data-field="shape" style="width:100px">
+          <option value="rect" ${it.shape!=='round'?'selected':''}>Rect.</option>
+          <option value="round" ${it.shape==='round'?'selected':''}>Ronde</option>
+        </select>
+      </td>
+      <td><input type="number" step="any" value="${it.shape==='round' ? '' : (it.lengthVal ?? '')}" data-field="lengthVal" style="width:65px" ${it.shape==='round'?'disabled placeholder="—"':''}></td>
+      <td><input type="number" step="any" value="${it.shape==='round' ? '' : (it.widthVal ?? '')}" data-field="widthVal" style="width:65px" ${it.shape==='round'?'disabled placeholder="—"':''}></td>
+      <td><input type="number" step="any" value="${it.shape==='round' ? (it.diameterVal ?? '') : ''}" data-field="diameterVal" style="width:65px" ${it.shape!=='round'?'disabled placeholder="—"':''}></td>
+      <td>
+        <select data-field="sizeUnit" style="width:60px">
+          <option value="mm" ${it.sizeUnit==='mm'?'selected':''}>mm</option>
+          <option value="in" ${it.sizeUnit==='in'?'selected':''}>in</option>
+        </select>
+      </td>
+      <td><input type="number" min="0" value="${it.zones ?? ''}" data-field="zones" style="width:55px"></td>
+      <td>
+        <select data-field="connector" style="width:65px">
+          <option value="S" ${it.connector==='S'?'selected':''}>S</option>
+          <option value="L" ${it.connector==='L'?'selected':''}>L</option>
+        </select>
+      </td>
+      <td><input value="${escapeHtml(it.specificity||'')}" data-field="specificity" style="min-width:110px"></td>
+      <td><input value="${escapeHtml(it.note||'')}" data-field="note" style="min-width:100px"></td>
+      <td>
+        <button class="icon-btn ghost" data-action="label" title="Étiquette QR">🏷</button>
+        <button class="icon-btn ghost" data-action="del" title="Supprimer">🗑</button>
+      </td>
+    </tr>`;
+  }
+  html += '</tbody></table>';
+  wrap.innerHTML = '<div style="overflow-x:auto;">' + html + '</div>';
+
+  wrap.querySelectorAll('input[data-field], select[data-field]').forEach(inp=>{
+    inp.addEventListener('change', e=>{
+      const tr = e.target.closest('tr');
+      const id = tr.dataset.id;
+      const field = e.target.dataset.field;
+      const item = items.find(i=>i.id===id);
+      if(!item) return;
+      const numericFields = ['qty','lengthVal','widthVal','diameterVal','zones'];
+      item[field] = numericFields.includes(field) ? Number(e.target.value)||0 : e.target.value;
+      saveItems();
+      render();
+    });
+  });
+  wrap.querySelectorAll('[data-action="del"]').forEach(btn=>{
+    btn.addEventListener('click', e=>{
+      const tr = e.target.closest('tr');
+      const id = tr.dataset.id;
+      items = items.filter(i=>i.id!==id);
+      saveItems();
+      render();
+    });
+  });
+  wrap.querySelectorAll('[data-action="label"]').forEach(btn=>{
+    btn.addEventListener('click', e=>{
+      const tr = e.target.closest('tr');
+      const id = tr.dataset.id;
+      const item = items.find(i=>i.id===id);
+      if(!item) return;
+      if(!item.code){
+        item.code = genUniqueCode();
+        saveItems();
+        render();
+      }
+      document.getElementById('genPanel').style.display = 'block';
+      document.getElementById('genPanel').scrollIntoView({behavior:'smooth', block:'start'});
+      document.getElementById('genCode').value = item.code;
+      document.getElementById('btnGenerate').click();
+    });
+  });
+}
+
+function escapeHtml(s){
+  return String(s??'').replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+function showForm(prefillCode){
+  document.getElementById('genPanel').style.display = 'none';
+  document.getElementById('checkPanel').style.display = 'none';
+  document.getElementById('formGrid').style.display = 'grid';
+  document.getElementById('fCode').value = prefillCode || '';
+  document.getElementById('fName').value = '';
+  document.getElementById('fQty').value = 1;
+  document.getElementById('fMatType').value = 'Standard';
+  document.getElementById('fVoltage').value = '';
+  document.getElementById('fWattage').value = '';
+  document.getElementById('fShape').value = 'rect';
+  document.getElementById('fSizeRectWrap').style.display = 'block';
+  document.getElementById('fSizeRoundWrap').style.display = 'none';
+  document.getElementById('fLength').value = '';
+  document.getElementById('fWidth').value = '';
+  document.getElementById('fDiameter').value = '';
+  document.getElementById('fSizeUnit').value = 'mm';
+  document.getElementById('fSizeUnitRound').value = 'mm';
+  document.getElementById('fZones').value = '';
+  document.getElementById('fConnector').value = 'S';
+  document.getElementById('fSpecificity').value = '';
+  document.getElementById('fNote').value = '';
+  document.getElementById('fName').focus();
+}
+function hideForm(){ document.getElementById('formGrid').style.display = 'none'; }
+
+document.getElementById('btnManual').addEventListener('click', ()=> showForm(''));
+document.getElementById('btnCancelForm').addEventListener('click', hideForm);
+
+document.getElementById('fShape').addEventListener('change', e=>{
+  const isRound = e.target.value === 'round';
+  document.getElementById('fSizeRectWrap').style.display = isRound ? 'none' : 'block';
+  document.getElementById('fSizeRoundWrap').style.display = isRound ? 'block' : 'none';
+});
+
+document.getElementById('btnSaveItem').addEventListener('click', ()=>{
+  const name = document.getElementById('fName').value.trim();
+  if(!name){ alert('Merci de donner un nom à l\'article.'); return; }
+  const code = document.getElementById('fCode').value.trim();
+  const qty = Number(document.getElementById('fQty').value)||0;
+  const fields = {
+    matType: document.getElementById('fMatType').value,
+    voltage: document.getElementById('fVoltage').value.trim(),
+    wattage: document.getElementById('fWattage').value.trim(),
+    shape: document.getElementById('fShape').value,
+    lengthVal: Number(document.getElementById('fLength').value)||0,
+    widthVal: Number(document.getElementById('fWidth').value)||0,
+    diameterVal: Number(document.getElementById('fDiameter').value)||0,
+    sizeUnit: document.getElementById('fShape').value === 'round'
+      ? document.getElementById('fSizeUnitRound').value
+      : document.getElementById('fSizeUnit').value,
+    zones: Number(document.getElementById('fZones').value)||0,
+    connector: document.getElementById('fConnector').value,
+    specificity: document.getElementById('fSpecificity').value.trim(),
+    note: document.getElementById('fNote').value.trim()
+  };
+  const existing = code ? items.find(it => it.code && it.code === code) : null;
+
+  if(existing){
+    // Code déjà présent -> on fusionne au lieu de dupliquer.
+    existing.qty = (Number(existing.qty)||0) + qty;
+    existing.name = name;
+    Object.assign(existing, fields);
+  }else{
+    items.push({
+      id: uid(),
+      code,
+      name,
+      qty,
+      ...fields
+    });
+  }
+  saveItems();
+  render();
+  hideForm();
+});
+
+document.getElementById('searchBox').addEventListener('input', render);
+
+document.getElementById('btnExport').addEventListener('click', ()=>{
+  if(items.length===0){ alert('Aucun article à exporter.'); return; }
+  const header = ['Code','Nom','Quantite','TypeTapis','Voltage','Wattage','Forme','Longueur','Largeur','Diametre','UniteTaille','NombreZones','Connectique','Specificite','Note'];
+  const rows = items.map(it=>[it.code,it.name,it.qty,it.matType,it.voltage,it.wattage,it.shape==='round'?'Ronde':'Rect.',it.lengthVal,it.widthVal,it.diameterVal,it.sizeUnit,it.zones,it.connector,it.specificity,it.note]);
+  const csv = [header, ...rows].map(r =>
+    r.map(v => `"${String(v??'').replace(/"/g,'""')}"`).join(',')
+  ).join('\n');
+  const blob = new Blob(['\ufeff'+csv], {type:'text/csv;charset=utf-8;'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = 'inventaire.csv';
+  a.click();
+  URL.revokeObjectURL(url);
+});
+
+// --- Scan caméra ---
+const statusEl = document.getElementById('scanStatus');
+
+document.getElementById('btnStartScan').addEventListener('click', async ()=>{
+  const readerEl = document.getElementById('reader');
+  readerEl.style.display = 'block';
+  document.getElementById('btnStartScan').style.display = 'none';
+  document.getElementById('btnStopScan').style.display = 'inline-block';
+  statusEl.textContent = 'Ouverture de la caméra…';
+  statusEl.className = 'status';
+
+  try{
+    html5QrCode = new Html5Qrcode('reader');
+    const config = { fps: 10, qrbox: { width: 240, height: 160 } };
+    await html5QrCode.start(
+      { facingMode: 'environment' },
+      config,
+      (decodedText)=>{
+        stopScan();
+        handleScannedCode(decodedText);
+      },
+      ()=>{ /* frame sans code détecté, on ignore */ }
+    );
+  }catch(err){
+    statusEl.textContent = '⚠ Caméra indisponible. Vérifiez les autorisations, ou ajoutez l\'article manuellement.';
+    document.getElementById('btnStartScan').style.display = 'inline-block';
+    document.getElementById('btnStopScan').style.display = 'none';
+    readerEl.style.display = 'none';
+  }
+});
+
+document.getElementById('btnStopScan').addEventListener('click', stopScan);
+
+function handleScannedCode(code){
+  // Cherche si ce code correspond déjà à un article dans TES données (pas de base externe).
+  const existing = items.find(it => it.code && it.code === code);
+
+  if(existing){
+    // Code déjà connu -> on incrémente simplement la quantité.
+    existing.qty = (Number(existing.qty)||0) + 1;
+    saveItems();
+    render();
+    statusEl.textContent = `✓ "${existing.name}" reconnu — quantité mise à jour (${existing.qty}).`;
+    statusEl.className = 'status ok';
+    return;
+  }
+
+  // Code jamais vu -> on ouvre le formulaire pré-rempli avec le code,
+  // pour que tu saisisses le nom une seule fois. La prochaine fois, il sera reconnu.
+  statusEl.textContent = `Nouveau code (${code}) — renseigne le nom une première fois, il sera reconnu ensuite.`;
+  statusEl.className = 'status';
+  showForm(code);
+}
+
+function stopScan(){
+  if(html5QrCode){
+    html5QrCode.stop().then(()=>html5QrCode.clear()).catch(()=>{});
+  }
+  document.getElementById('reader').style.display = 'none';
+  document.getElementById('btnStartScan').style.display = 'inline-block';
+  document.getElementById('btnStopScan').style.display = 'none';
+}
+
+function normalizeIncoming(inc){
+  return {
+    id: uid(),
+    code: inc.code || '',
+    name: inc.name || 'Article sans nom',
+    qty: Number(inc.qty)||0,
+    matType: inc.matType || 'Standard',
+    voltage: inc.voltage || '',
+    wattage: inc.wattage || '',
+    shape: inc.shape || 'rect',
+    lengthVal: Number(inc.lengthVal ?? inc.sizeVal)||0,
+    widthVal: Number(inc.widthVal)||0,
+    diameterVal: Number(inc.diameterVal)||0,
+    sizeUnit: inc.sizeUnit || 'mm',
+    zones: Number(inc.zones)||0,
+    connector: inc.connector || 'S',
+    specificity: inc.specificity || '',
+    note: inc.note || ''
+  };
+}
+
+// --- Sauvegarde / restauration JSON ---
+document.getElementById('btnExportJson').addEventListener('click', ()=>{
+  if(items.length===0){ alert('Aucun article à sauvegarder.'); return; }
+  const payload = {
+    app: 'inventaire',
+    exportedAt: new Date().toISOString(),
+    items
+  };
+  const blob = new Blob([JSON.stringify(payload, null, 2)], {type:'application/json'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  const stamp = new Date().toISOString().slice(0,10);
+  a.href = url; a.download = `inventaire-sauvegarde-${stamp}.json`;
+  a.click();
+  URL.revokeObjectURL(url);
+});
+
+document.getElementById('btnImportJson').addEventListener('click', ()=>{
+  document.getElementById('fileImportJson').click();
+});
+
+document.getElementById('fileImportJson').addEventListener('change', (e)=>{
+  const file = e.target.files[0];
+  if(!file) return;
+  const reader = new FileReader();
+  reader.onload = async (evt)=>{
+    let data;
+    try{
+      data = JSON.parse(evt.target.result);
+    }catch(err){
+      alert('Fichier JSON invalide.');
+      e.target.value = '';
+      return;
+    }
+    const incoming = Array.isArray(data) ? data : (Array.isArray(data.items) ? data.items : null);
+    if(!incoming){
+      alert('Ce fichier ne contient pas de liste d\'articles reconnaissable.');
+      e.target.value = '';
+      return;
+    }
+    const choice = confirm(
+      `${incoming.length} article(s) trouvé(s) dans le fichier.\n\n` +
+      `OK = fusionner avec l'inventaire actuel (les codes existants seront mis à jour)\n` +
+      `Annuler = remplacer entièrement l'inventaire actuel`
+    );
+    if(choice){
+      // Fusion par code
+      for(const inc of incoming){
+        const existing = inc.code ? items.find(it=>it.code && it.code===inc.code) : null;
+        if(existing){
+          existing.name = inc.name ?? existing.name;
+          existing.qty = inc.qty ?? existing.qty;
+          existing.matType = inc.matType ?? existing.matType;
+          existing.voltage = inc.voltage ?? existing.voltage;
+          existing.wattage = inc.wattage ?? existing.wattage;
+          existing.shape = inc.shape ?? existing.shape;
+          existing.lengthVal = inc.lengthVal ?? existing.lengthVal;
+          existing.widthVal = inc.widthVal ?? existing.widthVal;
+          existing.diameterVal = inc.diameterVal ?? existing.diameterVal;
+          existing.sizeUnit = inc.sizeUnit ?? existing.sizeUnit;
+          existing.zones = inc.zones ?? existing.zones;
+          existing.connector = inc.connector ?? existing.connector;
+          existing.specificity = inc.specificity ?? existing.specificity;
+          existing.note = inc.note ?? existing.note;
+        }else{
+          items.push(normalizeIncoming(inc));
+        }
+      }
+    }else{
+      // Remplacement complet
+      items = incoming.map(normalizeIncoming);
+    }
+    await saveItems();
+    render();
+    e.target.value = '';
+  };
+  reader.readAsText(file);
+});
+
+// --- Générateur de QR code ---
+let currentQr = null;
+let currentQrCode = null;
+
+function genUniqueCode(){
+  return 'ART-' + Date.now().toString(36).toUpperCase() + '-' + Math.random().toString(36).slice(2,5).toUpperCase();
+}
+
+document.getElementById('btnOpenGen').addEventListener('click', ()=>{
+  hideForm();
+  document.getElementById('checkPanel').style.display = 'none';
+  document.getElementById('genPanel').style.display = 'block';
+  document.getElementById('genCode').value = genUniqueCode();
+  document.getElementById('qrOutput').style.display = 'none';
+});
+document.getElementById('btnCloseGen').addEventListener('click', ()=>{
+  document.getElementById('genPanel').style.display = 'none';
+});
+document.getElementById('btnGenNew').addEventListener('click', ()=>{
+  document.getElementById('genCode').value = genUniqueCode();
+  document.getElementById('qrOutput').style.display = 'none';
+});
+
+document.getElementById('btnGenerate').addEventListener('click', ()=>{
+  const text = document.getElementById('genCode').value.trim();
+  if(!text){ alert('Merci de saisir un identifiant.'); return; }
+  const wrap = document.getElementById('qrCanvasWrap');
+  wrap.innerHTML = '';
+  currentQr = new QRCode(wrap, {
+    text,
+    width: 220,
+    height: 220,
+    colorDark: '#000000',
+    colorLight: '#ffffff'
+  });
+  currentQrCode = text;
+  document.getElementById('qrOutput').style.display = 'block';
+});
+
+document.getElementById('btnDownloadQr').addEventListener('click', ()=>{
+  const wrap = document.getElementById('qrCanvasWrap');
+  const img = wrap.querySelector('img');
+  const canvas = wrap.querySelector('canvas');
+  const src = img ? img.src : (canvas ? canvas.toDataURL('image/png') : null);
+  if(!src) return;
+  const a = document.createElement('a');
+  a.href = src;
+  a.download = `qrcode-${currentQrCode}.png`;
+  a.click();
+});
+
+document.getElementById('btnPrintQr').addEventListener('click', ()=>{
+  const wrap = document.getElementById('qrCanvasWrap');
+  const img = wrap.querySelector('img');
+  const canvas = wrap.querySelector('canvas');
+  const src = img ? img.src : (canvas ? canvas.toDataURL('image/png') : null);
+  if(!src) return;
+  const w = window.open('', '_blank');
+  w.document.write(`
+    <html><head><title>Étiquette</title></head>
+    <body style="text-align:center; font-family:sans-serif; margin-top:40px;">
+      <img src="${src}" style="width:220px;height:220px;"/>
+      <p style="font-family:monospace; font-size:13px;">${escapeHtml(currentQrCode)}</p>
+      <script>window.onload = () => window.print();<\/script>
+    </body></html>
+  `);
+  w.document.close();
+});
+
+document.getElementById('btnUseCodeForItem').addEventListener('click', ()=>{
+  document.getElementById('genPanel').style.display = 'none';
+  showForm(currentQrCode);
+});
+
+// --- Contrôle d'inventaire (scan continu) ---
+let checkHtml5Qr = null;
+let checkCounts = {};
+let checkLastScan = {};
+const checkStatusEl = document.getElementById('checkStatus');
+
+document.getElementById('btnOpenCheck').addEventListener('click', ()=>{
+  hideForm();
+  document.getElementById('genPanel').style.display = 'none';
+  document.getElementById('checkPanel').style.display = 'block';
+  renderCheckTable();
+});
+
+document.getElementById('btnCloseCheck').addEventListener('click', ()=>{
+  stopCheckScan();
+  document.getElementById('checkPanel').style.display = 'none';
+});
+
+document.getElementById('btnStartCheckScan').addEventListener('click', async ()=>{
+  const readerEl = document.getElementById('checkReader');
+  readerEl.style.display = 'block';
+  document.getElementById('btnStartCheckScan').style.display = 'none';
+  document.getElementById('btnStopCheckScan').style.display = 'inline-block';
+  checkStatusEl.textContent = 'Ouverture de la caméra…';
+  checkStatusEl.className = 'status';
+
+  try{
+    checkHtml5Qr = new Html5Qrcode('checkReader');
+    const config = { fps: 10, qrbox: { width: 240, height: 160 } };
+    await checkHtml5Qr.start(
+      { facingMode: 'environment' },
+      config,
+      (decodedText)=>{
+        const now = Date.now();
+        const last = checkLastScan[decodedText] || 0;
+        if(now - last < 1500) return; // évite de compter deux fois le même code trop vite
+        checkLastScan[decodedText] = now;
+        checkCounts[decodedText] = (checkCounts[decodedText] || 0) + 1;
+        renderCheckTable();
+        const known = items.find(it => it.code === decodedText);
+        checkStatusEl.textContent = known
+          ? `✓ ${known.name} — compté ${checkCounts[decodedText]}×`
+          : `⚠ Code inconnu scanné (${decodedText}) — non présent dans l'inventaire`;
+        checkStatusEl.className = known ? 'status ok' : 'status';
+      },
+      ()=>{ /* frame sans code, on ignore */ }
+    );
+  }catch(err){
+    checkStatusEl.textContent = '⚠ Caméra indisponible. Vérifiez les autorisations.';
+    document.getElementById('btnStartCheckScan').style.display = 'inline-block';
+    document.getElementById('btnStopCheckScan').style.display = 'none';
+    readerEl.style.display = 'none';
+  }
+});
+
+document.getElementById('btnStopCheckScan').addEventListener('click', stopCheckScan);
+
+function stopCheckScan(){
+  if(checkHtml5Qr){
+    checkHtml5Qr.stop().then(()=>checkHtml5Qr.clear()).catch(()=>{});
+  }
+  document.getElementById('checkReader').style.display = 'none';
+  document.getElementById('btnStartCheckScan').style.display = 'inline-block';
+  document.getElementById('btnStopCheckScan').style.display = 'none';
+}
+
+function renderCheckTable(){
+  const wrap = document.getElementById('checkTableWrap');
+  const codes = Object.keys(checkCounts);
+  if(codes.length === 0){
+    wrap.innerHTML = '<div class="empty">Aucun scan pour le moment. Démarre le scan et présente les articles un par un.</div>';
+    return;
+  }
+  let html = '<div style="overflow-x:auto;"><table><thead><tr><th>Code</th><th>Nom</th><th>Qté système</th><th>Qté comptée</th><th>Écart</th></tr></thead><tbody>';
+  for(const code of codes){
+    const item = items.find(it => it.code === code);
+    const systemQty = item ? Number(item.qty)||0 : null;
+    const counted = checkCounts[code];
+    const diff = systemQty === null ? null : counted - systemQty;
+    const diffLabel = diff === null ? '—' : (diff === 0 ? '0' : (diff > 0 ? '+' + diff : diff));
+    const diffClass = diff !== null && diff !== 0 ? 'low' : '';
+    html += `<tr>
+      <td class="code-cell">${escapeHtml(code)}</td>
+      <td>${item ? escapeHtml(item.name) : '<span class="low">Inconnu — non répertorié</span>'}</td>
+      <td>${systemQty === null ? '—' : systemQty}</td>
+      <td>${counted}</td>
+      <td class="${diffClass}">${diffLabel}</td>
+    </tr>`;
+  }
+  html += '</tbody></table></div>';
+  wrap.innerHTML = html;
+}
+
+document.getElementById('btnApplyCheck').addEventListener('click', async ()=>{
+  const codes = Object.keys(checkCounts);
+  if(codes.length === 0){ alert('Aucun scan à appliquer.'); return; }
+  const knownCodes = codes.filter(c => items.find(it=>it.code===c));
+  const unknownCount = codes.length - knownCodes.length;
+  const msg = `Mettre à jour la quantité de ${knownCodes.length} article(s) avec les valeurs comptées ?` +
+    (unknownCount > 0 ? `\n(${unknownCount} code(s) scanné(s) ne correspondent à aucun article et seront ignorés.)` : '');
+  if(!confirm(msg)) return;
+
+  for(const code of knownCodes){
+    const item = items.find(it => it.code === code);
+    item.qty = checkCounts[code];
+  }
+  await saveItems();
+  render();
+  checkStatusEl.textContent = '✓ Inventaire mis à jour et enregistré.';
+  checkStatusEl.className = 'status ok';
+});
+
+document.getElementById('btnExportCheck').addEventListener('click', ()=>{
+  const codes = Object.keys(checkCounts);
+  if(codes.length === 0){ alert('Aucun scan à exporter.'); return; }
+  const header = ['Code','Nom','QteSysteme','QteComptee','Ecart'];
+  const rows = codes.map(code=>{
+    const item = items.find(it => it.code === code);
+    const systemQty = item ? item.qty : '';
+    const diff = item ? (checkCounts[code] - item.qty) : '';
+    return [code, item ? item.name : 'Inconnu', systemQty, checkCounts[code], diff];
+  });
+  const csv = [header, ...rows].map(r =>
+    r.map(v => `"${String(v??'').replace(/"/g,'""')}"`).join(',')
+  ).join('\n');
+  const blob = new Blob(['\ufeff'+csv], {type:'text/csv;charset=utf-8;'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  const stamp = new Date().toISOString().slice(0,10);
+  a.href = url; a.download = `controle-inventaire-${stamp}.csv`;
+  a.click();
+  URL.revokeObjectURL(url);
+});
+
+document.getElementById('btnResetCheck').addEventListener('click', ()=>{
+  if(Object.keys(checkCounts).length === 0) return;
+  if(!confirm('Réinitialiser le comptage en cours ? Cette action ne peut pas être annulée.')) return;
+  checkCounts = {};
+  checkLastScan = {};
+  renderCheckTable();
+  checkStatusEl.textContent = '';
+});
+
+loadItems();
+</script>
+</body>
+</html>
