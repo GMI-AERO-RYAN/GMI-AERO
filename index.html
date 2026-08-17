@@ -865,8 +865,14 @@ document.getElementById('btnPrintQr').addEventListener('click', ()=>{
     : '';
   const w = window.open('', '_blank');
   w.document.write(`
-    <html><head><title>Étiquette</title></head>
-    <body style="text-align:center; font-family:sans-serif; margin-top:40px;">
+    <html><head><title>Étiquette</title>
+    <style>
+      @page { margin: 15mm; }
+      body { text-align:center; font-family:sans-serif; margin:0; padding-top:25mm; }
+      img { display:block; margin:0 auto; }
+    </style>
+    </head>
+    <body>
       <img src="${src}" style="width:220px;height:220px;"/>
       <p style="font-family:monospace; font-size:13px; margin-bottom:0;">${escapeHtml(currentQrCode)}</p>
       ${infoHtml}
