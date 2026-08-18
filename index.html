@@ -213,6 +213,19 @@
     </div>
   </div>
 
+  <div class="panel" id="itemDetailPanel" style="display:none;">
+    <div class="row" style="justify-content:space-between; align-items:baseline;">
+      <strong style="font-family:var(--mono); font-size:13px; text-transform:uppercase; letter-spacing:0.5px; color:var(--amber);">📄 Fiche article</strong>
+      <button class="ghost icon-btn" id="btnCloseDetail">✕</button>
+    </div>
+    <div id="itemDetailContent" style="margin-top:10px;"></div>
+    <div class="row" style="margin-top:14px;">
+      <button class="primary" id="btnDetailAddOne">➕ +1 (nouvelle unité trouvée)</button>
+      <button class="ghost" id="btnDetailEdit">✏ Modifier dans le tableau</button>
+      <button class="ghost" id="btnDetailLabel">🏷 Réimprimer l'étiquette</button>
+    </div>
+  </div>
+
   <div class="panel" id="checkPanel" style="display:none;">
     <div class="row" style="justify-content:space-between; align-items:baseline;">
       <strong style="font-family:var(--mono); font-size:13px; text-transform:uppercase; letter-spacing:0.5px;">📋 Contrôle d'inventaire</strong>
@@ -519,27 +532,29 @@ function escapeHtml(s){
   return String(s??'').replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 }
 
-function showForm(prefillCode){
+function showForm(prefillCode, prefillData){
   document.getElementById('genPanel').style.display = 'none';
   document.getElementById('checkPanel').style.display = 'none';
   document.getElementById('formGrid').style.display = 'grid';
+  const d = prefillData || {};
   document.getElementById('fCode').value = prefillCode || '';
-  document.getElementById('fName').value = '';
+  document.getElementById('fName').value = d.name || '';
   document.getElementById('fQty').value = 1;
-  document.getElementById('fMatType').value = 'Standard';
-  document.getElementById('fVoltage').value = '';
-  document.getElementById('fWattage').value = '';
-  document.getElementById('fShape').value = 'rect';
-  document.getElementById('fSizeRectWrap').style.display = 'block';
-  document.getElementById('fSizeRoundWrap').style.display = 'none';
-  document.getElementById('fLength').value = '';
-  document.getElementById('fWidth').value = '';
-  document.getElementById('fDiameter').value = '';
-  document.getElementById('fSizeUnit').value = 'mm';
-  document.getElementById('fSizeUnitRound').value = 'mm';
-  document.getElementById('fZones').value = '';
-  document.getElementById('fConnector').value = 'S';
-  document.getElementById('fSpecificity').value = '';
+  document.getElementById('fMatType').value = d.matType || 'Standard';
+  document.getElementById('fVoltage').value = d.voltage || '';
+  document.getElementById('fWattage').value = d.wattage || '';
+  const shape = d.shape === 'round' ? 'round' : 'rect';
+  document.getElementById('fShape').value = shape;
+  document.getElementById('fSizeRectWrap').style.display = shape === 'round' ? 'none' : 'block';
+  document.getElementById('fSizeRoundWrap').style.display = shape === 'round' ? 'block' : 'none';
+  document.getElementById('fLength').value = d.lengthVal || '';
+  document.getElementById('fWidth').value = d.widthVal || '';
+  document.getElementById('fDiameter').value = d.diameterVal || '';
+  document.getElementById('fSizeUnit').value = d.sizeUnit || 'mm';
+  document.getElementById('fSizeUnitRound').value = d.sizeUnit || 'mm';
+  document.getElementById('fZones').value = d.zones || '';
+  document.getElementById('fConnector').value = d.connector || 'S';
+  document.getElementById('fSpecificity').value = d.specificity || '';
   document.getElementById('fNote').value = '';
   document.getElementById('fName').focus();
 }
@@ -673,22 +688,40 @@ function describeCameraError(err){
 
 document.getElementById('btnStopScan').addEventListener('click', stopScan);
 
-function handleScannedCode(code){
+function handleScannedCode(rawText){
+  // Un QR généré par cette app peut contenir soit un simple code, soit un
+  // objet JSON avec toutes les infos de l'article (voir buildQrPayload).
+  let parsed = null;
+  try{
+    const maybe = JSON.parse(rawText);
+    if(maybe && typeof maybe === 'object' && maybe.__inv === true && maybe.code){
+      parsed = maybe;
+    }
+  }catch(e){ /* pas du JSON -> code-barres/QR simple, comportement normal */ }
+
+  const code = parsed ? parsed.code : rawText;
+
   // Cherche si ce code correspond déjà à un article dans TES données (pas de base externe).
   const existing = items.find(it => it.code && it.code === code);
 
   if(existing){
-    // Code déjà connu -> on incrémente simplement la quantité.
-    existing.qty = (Number(existing.qty)||0) + 1;
-    saveItems();
-    render();
-    statusEl.textContent = `✓ "${existing.name}" reconnu — quantité mise à jour (${existing.qty}).`;
-    statusEl.className = 'status ok';
+    // Code déjà connu -> on affiche sa fiche complète pour consultation,
+    // plutôt que d'incrémenter la quantité en silence.
+    showItemDetail(existing);
     return;
   }
 
-  // Code jamais vu -> on ouvre le formulaire pré-rempli avec le code,
-  // pour que tu saisisses le nom une seule fois. La prochaine fois, il sera reconnu.
+  if(parsed){
+    // Le QR contenait toutes les infos de l'article -> fiche pré-remplie entièrement,
+    // il ne reste qu'à vérifier et enregistrer.
+    statusEl.textContent = `Article inconnu ici, mais toutes ses infos étaient dans le QR — vérifie et enregistre.`;
+    statusEl.className = 'status ok';
+    showForm(code, parsed);
+    return;
+  }
+
+  // Code jamais vu et sans infos encodées -> on ouvre le formulaire pré-rempli
+  // avec le code seul, pour que tu saisisses le nom une seule fois.
   statusEl.textContent = `Nouveau code (${code}) — renseigne le nom une première fois, il sera reconnu ensuite.`;
   statusEl.className = 'status';
   showForm(code);
@@ -855,19 +888,45 @@ document.getElementById('btnGenNew').addEventListener('click', ()=>{
   document.getElementById('qrOutput').style.display = 'none';
 });
 
+function buildQrPayload(code, item){
+  if(!item){
+    // Code brut, sans article associé (nouvelle étiquette vierge).
+    return code;
+  }
+  // Encode toutes les infos de l'article dans le QR, pour pouvoir recréer
+  // la ligne complète si ce code est scanné sur un inventaire où il est inconnu.
+  return JSON.stringify({
+    __inv: true,
+    code,
+    name: item.name,
+    matType: item.matType,
+    voltage: item.voltage,
+    wattage: item.wattage,
+    shape: item.shape,
+    lengthVal: item.lengthVal,
+    widthVal: item.widthVal,
+    diameterVal: item.diameterVal,
+    sizeUnit: item.sizeUnit,
+    zones: item.zones,
+    connector: item.connector,
+    specificity: item.specificity
+  });
+}
+
 document.getElementById('btnGenerate').addEventListener('click', ()=>{
-  const text = document.getElementById('genCode').value.trim();
-  if(!text){ alert('Merci de saisir un identifiant.'); return; }
+  const code = document.getElementById('genCode').value.trim();
+  if(!code){ alert('Merci de saisir un identifiant.'); return; }
+  const payload = buildQrPayload(code, currentQrItem);
   const wrap = document.getElementById('qrCanvasWrap');
   wrap.innerHTML = '';
   currentQr = new QRCode(wrap, {
-    text,
+    text: payload,
     width: 220,
     height: 220,
     colorDark: '#000000',
     colorLight: '#ffffff'
   });
-  currentQrCode = text;
+  currentQrCode = code;
   const infoLines = buildItemInfoLines(currentQrItem);
   document.getElementById('qrInfo').innerHTML = infoLines.length
     ? infoLines.map(escapeHtml).join('<br>')
@@ -921,6 +980,91 @@ document.getElementById('btnUseCodeForItem').addEventListener('click', ()=>{
   showForm(currentQrCode);
 });
 
+// --- Fiche de consultation d'un article scanné ---
+let detailItemId = null;
+
+function showItemDetail(item){
+  hideForm();
+  document.getElementById('genPanel').style.display = 'none';
+  document.getElementById('checkPanel').style.display = 'none';
+  detailItemId = item.id;
+
+  const shapeLabel = item.shape === 'round'
+    ? `Ø ${item.diameterVal||0} ${item.sizeUnit||'mm'}`
+    : `${item.lengthVal||0} × ${item.widthVal||0} ${item.sizeUnit||'mm'}`;
+
+  const rows = [
+    ['Code', item.code || '—'],
+    ['Nom', item.name],
+    ['Quantité en stock', item.qty],
+    ['Type de tapis', item.matType || '—'],
+    ['Voltage', item.voltage || '—'],
+    ['Wattage', item.wattage || '—'],
+    ['Taille', shapeLabel],
+    ['Zones', item.zones || '—'],
+    ['Connectique', item.connector || '—'],
+    ['Spécificité', item.specificity || '—'],
+    ['Note', item.note || '—']
+  ];
+
+  document.getElementById('itemDetailContent').innerHTML =
+    '<table style="width:100%;">' +
+    rows.map(([label, val]) => `
+      <tr>
+        <td style="padding:5px 8px 5px 0; color:var(--ink-dim); font-size:12px; white-space:nowrap; vertical-align:top;">${escapeHtml(label)}</td>
+        <td style="padding:5px 0; font-size:14px;">${escapeHtml(val)}</td>
+      </tr>
+    `).join('') +
+    '</table>';
+
+  document.getElementById('itemDetailPanel').style.display = 'block';
+  document.getElementById('itemDetailPanel').scrollIntoView({behavior:'smooth', block:'start'});
+  statusEl.textContent = `✓ "${item.name}" trouvé — fiche affichée ci-dessous.`;
+  statusEl.className = 'status ok';
+}
+
+document.getElementById('btnCloseDetail').addEventListener('click', ()=>{
+  document.getElementById('itemDetailPanel').style.display = 'none';
+  detailItemId = null;
+});
+
+document.getElementById('btnDetailAddOne').addEventListener('click', async ()=>{
+  const item = items.find(i=>i.id===detailItemId);
+  if(!item) return;
+  item.qty = (Number(item.qty)||0) + 1;
+  await saveItems();
+  showItemDetail(item); // rafraîchit la fiche avec la nouvelle quantité
+  render();
+});
+
+document.getElementById('btnDetailEdit').addEventListener('click', ()=>{
+  const item = items.find(i=>i.id===detailItemId);
+  if(!item) return;
+  document.getElementById('itemDetailPanel').style.display = 'none';
+  const row = document.querySelector(`#tableWrap tr[data-id="${item.id}"]`);
+  if(row){
+    row.scrollIntoView({behavior:'smooth', block:'center'});
+    row.style.outline = '2px solid var(--amber)';
+    setTimeout(()=>{ row.style.outline = ''; }, 2000);
+  }
+});
+
+document.getElementById('btnDetailLabel').addEventListener('click', ()=>{
+  const item = items.find(i=>i.id===detailItemId);
+  if(!item) return;
+  document.getElementById('itemDetailPanel').style.display = 'none';
+  if(!item.code){
+    item.code = genUniqueCode();
+    saveItems();
+    render();
+  }
+  currentQrItem = item;
+  document.getElementById('genPanel').style.display = 'block';
+  document.getElementById('genPanel').scrollIntoView({behavior:'smooth', block:'start'});
+  document.getElementById('genCode').value = item.code;
+  document.getElementById('btnGenerate').click();
+});
+
 // --- Contrôle d'inventaire (scan continu) ---
 let checkHtml5Qr = null;
 let checkCounts = {};
@@ -954,17 +1098,32 @@ document.getElementById('btnStartCheckScan').addEventListener('click', async ()=
       { facingMode: 'environment' },
       config,
       (decodedText)=>{
+        let parsed = null;
+        try{
+          const maybe = JSON.parse(decodedText);
+          if(maybe && typeof maybe === 'object' && maybe.__inv === true && maybe.code){
+            parsed = maybe;
+          }
+        }catch(e){ /* code brut, pas de JSON */ }
+        const code = parsed ? parsed.code : decodedText;
+
         const now = Date.now();
-        const last = checkLastScan[decodedText] || 0;
+        const last = checkLastScan[code] || 0;
         if(now - last < 1500) return; // évite de compter deux fois le même code trop vite
-        checkLastScan[decodedText] = now;
-        checkCounts[decodedText] = (checkCounts[decodedText] || 0) + 1;
+        checkLastScan[code] = now;
+        checkCounts[code] = (checkCounts[code] || 0) + 1;
         renderCheckTable();
-        const known = items.find(it => it.code === decodedText);
-        checkStatusEl.textContent = known
-          ? `✓ ${known.name} — compté ${checkCounts[decodedText]}×`
-          : `⚠ Code inconnu scanné (${decodedText}) — non présent dans l'inventaire`;
-        checkStatusEl.className = known ? 'status ok' : 'status';
+        const known = items.find(it => it.code === code);
+        if(known){
+          checkStatusEl.textContent = `✓ ${known.name} — compté ${checkCounts[code]}×`;
+          checkStatusEl.className = 'status ok';
+        }else if(parsed){
+          checkStatusEl.textContent = `⚠ "${parsed.name}" scanné mais absent de cet inventaire (toutes ses infos sont dans le QR — utilise "Scanner un code" pour le recréer).`;
+          checkStatusEl.className = 'status';
+        }else{
+          checkStatusEl.textContent = `⚠ Code inconnu scanné (${code}) — non présent dans l'inventaire`;
+          checkStatusEl.className = 'status';
+        }
       },
       ()=>{ /* frame sans code, on ignore */ }
     );
