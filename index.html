@@ -230,6 +230,17 @@
 
     <div id="checkTableWrap" style="margin-top:14px;"></div>
 
+    <div id="unscannedSection" style="display:none; margin-top:20px; border-top:1px solid var(--line); padding-top:14px;">
+      <div class="row" style="justify-content:space-between; align-items:baseline;">
+        <strong style="font-family:var(--mono); font-size:12px; text-transform:uppercase; letter-spacing:0.5px; color:var(--danger);">⚠ Tapis non scannés</strong>
+        <button class="danger-outline icon-btn" id="btnDeleteUnscanned">🗑 Supprimer les non scannés</button>
+      </div>
+      <p style="color:var(--ink-dim); font-size:12px; margin:6px 0;">
+        Articles présents dans l'inventaire mais pas encore présentés à la caméra durant cette session de contrôle.
+      </p>
+      <div id="unscannedWrap"></div>
+    </div>
+
     <div class="row" style="margin-top:12px;">
       <button class="primary" id="btnApplyCheck">✓ Appliquer et enregistrer</button>
       <button class="ghost icon-btn" id="btnExportCheck">⬇ Exporter le rapport CSV</button>
@@ -982,6 +993,7 @@ function renderCheckTable(){
   const codes = Object.keys(checkCounts);
   if(codes.length === 0){
     wrap.innerHTML = '<div class="empty">Aucun scan pour le moment. Démarre le scan et présente les articles un par un.</div>';
+    document.getElementById('unscannedSection').style.display = 'none';
     return;
   }
   let html = '<div style="overflow-x:auto;"><table><thead><tr><th>Code</th><th>Nom</th><th>Qté système</th><th>Qté comptée</th><th>Écart</th></tr></thead><tbody>';
@@ -1002,7 +1014,66 @@ function renderCheckTable(){
   }
   html += '</tbody></table></div>';
   wrap.innerHTML = html;
+
+  renderUnscannedTable();
 }
+
+function renderUnscannedTable(){
+  const section = document.getElementById('unscannedSection');
+  const unscannedWrap = document.getElementById('unscannedWrap');
+  const unscanned = items.filter(it => it.code && !(it.code in checkCounts));
+
+  section.style.display = 'block';
+
+  if(unscanned.length === 0){
+    unscannedWrap.innerHTML = '<div class="empty">✓ Tous les articles ayant un code ont été scannés.</div>';
+    document.getElementById('btnDeleteUnscanned').style.display = 'none';
+    return;
+  }
+
+  document.getElementById('btnDeleteUnscanned').style.display = 'inline-block';
+  let html = '<div style="overflow-x:auto;"><table><thead><tr><th>Code</th><th>Nom</th><th>Qté système</th><th></th></tr></thead><tbody>';
+  for(const item of unscanned){
+    html += `<tr data-id="${item.id}">
+      <td class="code-cell">${escapeHtml(item.code)}</td>
+      <td>${escapeHtml(item.name)}</td>
+      <td>${item.qty}</td>
+      <td><button class="icon-btn ghost" data-action="del-unscanned" title="Supprimer cet article">🗑</button></td>
+    </tr>`;
+  }
+  html += '</tbody></table></div>';
+  unscannedWrap.innerHTML = html;
+
+  unscannedWrap.querySelectorAll('[data-action="del-unscanned"]').forEach(btn=>{
+    btn.addEventListener('click', async e=>{
+      const tr = e.target.closest('tr');
+      const id = tr.dataset.id;
+      const item = items.find(i=>i.id===id);
+      if(!item) return;
+      if(!confirm(`Supprimer "${item.name}" de l'inventaire ? Cette action ne peut pas être annulée.`)) return;
+      items = items.filter(i=>i.id!==id);
+      await saveItems();
+      render();
+      renderUnscannedTable();
+    });
+  });
+}
+
+document.getElementById('btnDeleteUnscanned').addEventListener('click', async ()=>{
+  const unscanned = items.filter(it => it.code && !(it.code in checkCounts));
+  if(unscanned.length === 0) return;
+  const confirmed = confirm(
+    `Supprimer définitivement ${unscanned.length} article(s) non scanné(s) de l'inventaire ?\n\nCette action ne peut pas être annulée.`
+  );
+  if(!confirmed) return;
+  const unscannedIds = new Set(unscanned.map(it=>it.id));
+  items = items.filter(it => !unscannedIds.has(it.id));
+  await saveItems();
+  render();
+  renderUnscannedTable();
+  checkStatusEl.textContent = `✓ ${unscanned.length} article(s) non scanné(s) supprimé(s).`;
+  checkStatusEl.className = 'status ok';
+});
 
 document.getElementById('btnApplyCheck').addEventListener('click', async ()=>{
   const codes = Object.keys(checkCounts);
@@ -1051,6 +1122,7 @@ document.getElementById('btnResetCheck').addEventListener('click', ()=>{
   checkCounts = {};
   checkLastScan = {};
   renderCheckTable();
+  document.getElementById('unscannedSection').style.display = 'none';
   checkStatusEl.textContent = '';
 });
 
