@@ -688,16 +688,45 @@ function describeCameraError(err){
 
 document.getElementById('btnStopScan').addEventListener('click', stopScan);
 
+function expandQrPayload(p){
+  return {
+    code: p.c,
+    name: p.n,
+    matType: p.mt || '',
+    voltage: p.v || '',
+    wattage: p.w || '',
+    shape: p.sh === 'r' ? 'round' : 'rect',
+    lengthVal: p.l || 0,
+    widthVal: p.wd || 0,
+    diameterVal: p.d || 0,
+    sizeUnit: p.u || 'mm',
+    zones: p.z || 0,
+    connector: p.cn || '',
+    specificity: p.sp || ''
+  };
+}
+
 function handleScannedCode(rawText){
   // Un QR généré par cette app peut contenir soit un simple code, soit un
-  // objet JSON avec toutes les infos de l'article (voir buildQrPayload).
+  // objet JSON compact avec les infos de l'article (voir buildQrPayload).
   let parsed = null;
+  const looksLikeJson = /^\s*\{/.test(rawText); // commence par '{' -> censé être du JSON
   try{
     const maybe = JSON.parse(rawText);
-    if(maybe && typeof maybe === 'object' && maybe.__inv === true && maybe.code){
-      parsed = maybe;
+    if(maybe && typeof maybe === 'object' && maybe._ === 1 && maybe.c){
+      parsed = expandQrPayload(maybe);
     }
-  }catch(e){ /* pas du JSON -> code-barres/QR simple, comportement normal */ }
+  }catch(e){
+    if(looksLikeJson){
+      // Le QR contenait des infos structurées mais la lecture caméra a
+      // corrompu/tronqué les données -> on ne crée pas d'article avec ce
+      // texte inutilisable, on demande simplement de rescanner.
+      statusEl.textContent = `⚠ QR mal lu (données corrompues) — rapproche-toi, améliore l'éclairage et réessaie le scan.`;
+      statusEl.className = 'status';
+      return;
+    }
+    // Sinon ce n'est simplement pas du JSON -> code-barres/QR simple, comportement normal.
+  }
 
   const code = parsed ? parsed.code : rawText;
 
@@ -893,24 +922,25 @@ function buildQrPayload(code, item){
     // Code brut, sans article associé (nouvelle étiquette vierge).
     return code;
   }
-  // Encode toutes les infos de l'article dans le QR, pour pouvoir recréer
-  // la ligne complète si ce code est scanné sur un inventaire où il est inconnu.
-  return JSON.stringify({
-    __inv: true,
-    code,
-    name: item.name,
-    matType: item.matType,
-    voltage: item.voltage,
-    wattage: item.wattage,
-    shape: item.shape,
-    lengthVal: item.lengthVal,
-    widthVal: item.widthVal,
-    diameterVal: item.diameterVal,
-    sizeUnit: item.sizeUnit,
-    zones: item.zones,
-    connector: item.connector,
-    specificity: item.specificity
-  });
+  // Encode les infos de l'article dans le QR avec des clés courtes et sans
+  // champs vides, pour garder le QR le plus léger et lisible possible
+  // (moins de données = QR moins dense = plus facile à scanner).
+  const payload = { _:1, c: code, n: item.name };
+  if(item.matType) payload.mt = item.matType;
+  if(item.voltage) payload.v = item.voltage;
+  if(item.wattage) payload.w = item.wattage;
+  if(item.shape === 'round'){
+    payload.sh = 'r';
+    if(item.diameterVal) payload.d = item.diameterVal;
+  }else{
+    if(item.lengthVal) payload.l = item.lengthVal;
+    if(item.widthVal) payload.wd = item.widthVal;
+  }
+  if(item.sizeUnit) payload.u = item.sizeUnit;
+  if(item.zones) payload.z = item.zones;
+  if(item.connector) payload.cn = item.connector;
+  if(item.specificity) payload.sp = item.specificity;
+  return JSON.stringify(payload);
 }
 
 document.getElementById('btnGenerate').addEventListener('click', ()=>{
@@ -921,10 +951,11 @@ document.getElementById('btnGenerate').addEventListener('click', ()=>{
   wrap.innerHTML = '';
   currentQr = new QRCode(wrap, {
     text: payload,
-    width: 220,
-    height: 220,
+    width: 280,
+    height: 280,
     colorDark: '#000000',
-    colorLight: '#ffffff'
+    colorLight: '#ffffff',
+    correctLevel: QRCode.CorrectLevel.M
   });
   currentQrCode = code;
   const infoLines = buildItemInfoLines(currentQrItem);
@@ -1099,12 +1130,19 @@ document.getElementById('btnStartCheckScan').addEventListener('click', async ()=
       config,
       (decodedText)=>{
         let parsed = null;
+        const looksLikeJson = /^\s*\{/.test(decodedText);
         try{
           const maybe = JSON.parse(decodedText);
-          if(maybe && typeof maybe === 'object' && maybe.__inv === true && maybe.code){
-            parsed = maybe;
+          if(maybe && typeof maybe === 'object' && maybe._ === 1 && maybe.c){
+            parsed = expandQrPayload(maybe);
           }
-        }catch(e){ /* code brut, pas de JSON */ }
+        }catch(e){
+          if(looksLikeJson){
+            checkStatusEl.textContent = `⚠ QR mal lu (données corrompues) — rapproche-toi et réessaie.`;
+            checkStatusEl.className = 'status';
+            return; // on ignore ce scan raté, pas de comptage sur des données invalides
+          }
+        }
         const code = parsed ? parsed.code : decodedText;
 
         const now = Date.now();
