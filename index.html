@@ -116,7 +116,10 @@
       </div>
       <div>
         <label>Nom de l'article</label>
-        <input id="fName" placeholder="Ex: Boîte de vis 4mm">
+        <div class="row" style="gap:6px;">
+          <input id="fName" placeholder="Ex: Boîte de vis 4mm" style="flex:1;">
+          <button type="button" class="ghost icon-btn" id="btnAutoName" title="Générer le nom automatiquement">🔄 Auto</button>
+        </div>
       </div>
       <div>
         <label>Quantité</label>
@@ -622,6 +625,56 @@ function showForm(prefillCode, prefillData){
   document.getElementById('fName').focus();
 }
 function hideForm(){ document.getElementById('formGrid').style.display = 'none'; }
+
+// --- Génération automatique du nom selon la syntaxe GMI HB ---
+// GMI (fixe) + HB (fixe) + C si Stretchable (rien si Standard)
+// + taille : en cm -> 3 chiffres par dimension (ex: 20cm -> "020"), en pouces -> 2 chiffres par dimension
+// (rectangulaire = longueur puis largeur concaténées, ronde = diamètre seul)
+// + "-" + nombre de zones + "Z"  + "-" + premier chiffre du voltage
+function formatSizeBlock(value, unit){
+  if(!value) return '';
+  if(unit === 'in'){
+    return String(Math.round(value)).padStart(2,'0');
+  }
+  const cm = Math.round(value/10); // conversion mm -> cm
+  return String(cm).padStart(3,'0');
+}
+
+function generateAutoName(){
+  const matType = document.getElementById('fMatType').value;
+  const shape = document.getElementById('fShape').value;
+  const unit = shape === 'round' ? document.getElementById('fSizeUnitRound').value : document.getElementById('fSizeUnit').value;
+  const zones = document.getElementById('fZones').value;
+  const voltage = document.getElementById('fVoltage').value;
+
+  const cLetter = matType === 'Stretchable' ? 'C' : '';
+
+  let sizeBlock = '';
+  if(shape === 'round'){
+    const d = Number(document.getElementById('fDiameter').value) || 0;
+    sizeBlock = formatSizeBlock(d, unit);
+  }else{
+    const l = Number(document.getElementById('fLength').value) || 0;
+    const w = Number(document.getElementById('fWidth').value) || 0;
+    sizeBlock = formatSizeBlock(l, unit) + formatSizeBlock(w, unit);
+  }
+
+  const zoneBlock = zones ? `${zones}Z` : '';
+  const voltMatch = String(voltage).match(/\d/);
+  const voltBlock = voltMatch ? voltMatch[0] : '';
+
+  let name = `GMIHB${cLetter}${sizeBlock}`;
+  const suffixParts = [zoneBlock, voltBlock].filter(Boolean);
+  if(suffixParts.length) name += '-' + suffixParts.join('-');
+
+  if(name === 'GMIHB'){
+    alert('Renseigne au moins la taille, les zones ou le voltage avant de générer le nom.');
+    return;
+  }
+  document.getElementById('fName').value = name;
+}
+
+document.getElementById('btnAutoName').addEventListener('click', generateAutoName);
 
 document.getElementById('btnManual').addEventListener('click', ()=> showForm(''));
 document.getElementById('btnCancelForm').addEventListener('click', hideForm);
