@@ -79,6 +79,12 @@
   .search{flex:1; min-width:160px;}
   .low{color:var(--danger); font-weight:700;}
   .save-flag{font-family:var(--mono); font-size:11px; color:var(--ink-dim);}
+  .stat-card{
+    background:var(--panel-2); border:1px solid var(--line); border-radius:6px;
+    padding:10px 14px; min-width:110px;
+  }
+  .stat-card .stat-value{font-family:var(--mono); font-size:20px; color:var(--amber); font-weight:700;}
+  .stat-card .stat-label{font-size:11px; color:var(--ink-dim); text-transform:uppercase; letter-spacing:0.5px; margin-top:2px;}
   .icon-btn{padding:6px 9px; font-size:13px;}
   footer{margin-top:20px; text-align:center; color:var(--ink-dim); font-family:var(--mono); font-size:11px;}
 </style>
@@ -98,6 +104,7 @@
       <button class="ghost" id="btnManual">➕ Ajouter manuellement</button>
       <button class="ghost" id="btnOpenGen">🏷 Générer un QR code</button>
       <button class="ghost" id="btnOpenCheck">📋 Contrôle d'inventaire</button>
+      <button class="ghost" id="btnOpenRecap">📊 Récap du stock</button>
     </div>
     <div id="reader" style="display:none;"></div>
     <div class="status" id="scanStatus"></div>
@@ -212,6 +219,60 @@
         <button class="primary" id="btnUseCodeForItem">➕ Créer l'article avec ce code</button>
       </div>
     </div>
+  </div>
+
+  <div class="panel" id="recapPanel" style="display:none;">
+    <div class="row" style="justify-content:space-between; align-items:baseline;">
+      <strong style="font-family:var(--mono); font-size:13px; text-transform:uppercase; letter-spacing:0.5px; color:var(--amber);">📊 Récapitulatif du stock</strong>
+      <button class="ghost icon-btn" id="btnCloseRecap">✕</button>
+    </div>
+
+    <div class="form-grid" style="margin-top:10px;">
+      <div>
+        <label>Type de tapis</label>
+        <select id="rcMatType"><option value="">Tous</option></select>
+      </div>
+      <div>
+        <label>Forme</label>
+        <select id="rcShape">
+          <option value="">Toutes</option>
+          <option value="rect">Rectangulaire</option>
+          <option value="round">Ronde</option>
+        </select>
+      </div>
+      <div>
+        <label>Connectique</label>
+        <select id="rcConnector">
+          <option value="">Toutes</option>
+          <option value="S">S</option>
+          <option value="L">L</option>
+        </select>
+      </div>
+      <div>
+        <label>Voltage</label>
+        <select id="rcVoltage"><option value="">Tous</option></select>
+      </div>
+      <div>
+        <label>Wattage</label>
+        <select id="rcWattage"><option value="">Tous</option></select>
+      </div>
+      <div>
+        <label>Zones</label>
+        <select id="rcZones"><option value="">Toutes</option></select>
+      </div>
+      <div class="full">
+        <label>Recherche libre</label>
+        <input id="rcSearch" placeholder="nom, code, spécificité, note...">
+      </div>
+      <div class="full row">
+        <button class="ghost" id="btnResetRecapFilters">↺ Réinitialiser les filtres</button>
+        <button class="ghost icon-btn" id="btnExportRecap">⬇ Exporter ce récap (CSV)</button>
+      </div>
+    </div>
+
+    <div class="row" id="recapStats" style="margin-top:16px; flex-wrap:wrap; gap:10px;"></div>
+
+    <div id="recapTableWrap" style="margin-top:14px;"></div>
   </div>
 
   <div class="panel" id="itemDetailPanel" style="display:none;">
@@ -536,6 +597,7 @@ function escapeHtml(s){
 function showForm(prefillCode, prefillData){
   document.getElementById('genPanel').style.display = 'none';
   document.getElementById('checkPanel').style.display = 'none';
+  document.getElementById('recapPanel').style.display = 'none';
   document.getElementById('formGrid').style.display = 'grid';
   const d = prefillData || {};
   document.getElementById('fCode').value = prefillCode || '';
@@ -904,6 +966,7 @@ function buildItemInfoLines(item){
 document.getElementById('btnOpenGen').addEventListener('click', ()=>{
   hideForm();
   document.getElementById('checkPanel').style.display = 'none';
+  document.getElementById('recapPanel').style.display = 'none';
   document.getElementById('genPanel').style.display = 'block';
   document.getElementById('genCode').value = genUniqueCode();
   currentQrItem = null;
@@ -1019,6 +1082,7 @@ function showItemDetail(item){
   hideForm();
   document.getElementById('genPanel').style.display = 'none';
   document.getElementById('checkPanel').style.display = 'none';
+  document.getElementById('recapPanel').style.display = 'none';
   detailItemId = item.id;
 
   const shapeLabel = item.shape === 'round'
@@ -1106,6 +1170,7 @@ const checkStatusEl = document.getElementById('checkStatus');
 document.getElementById('btnOpenCheck').addEventListener('click', ()=>{
   hideForm();
   document.getElementById('genPanel').style.display = 'none';
+  document.getElementById('recapPanel').style.display = 'none';
   document.getElementById('checkPanel').style.display = 'block';
   renderCheckTable();
 });
@@ -1322,6 +1387,157 @@ document.getElementById('btnResetCheck').addEventListener('click', ()=>{
   renderCheckTable();
   document.getElementById('unscannedSection').style.display = 'none';
   checkStatusEl.textContent = '';
+});
+
+// --- Récapitulatif du stock avec filtres dynamiques ---
+document.getElementById('btnOpenRecap').addEventListener('click', ()=>{
+  hideForm();
+  document.getElementById('genPanel').style.display = 'none';
+  document.getElementById('checkPanel').style.display = 'none';
+  document.getElementById('itemDetailPanel').style.display = 'none';
+  document.getElementById('recapPanel').style.display = 'block';
+  refreshRecapFilterOptions();
+  renderRecap();
+});
+
+document.getElementById('btnCloseRecap').addEventListener('click', ()=>{
+  document.getElementById('recapPanel').style.display = 'none';
+});
+
+function uniqueSorted(values){
+  return [...new Set(values.filter(v => v !== undefined && v !== null && v !== ''))]
+    .sort((a,b)=> String(a).localeCompare(String(b), 'fr', {numeric:true}));
+}
+
+function refreshRecapFilterOptions(){
+  const fill = (selectId, values)=>{
+    const sel = document.getElementById(selectId);
+    const current = sel.value;
+    const firstOption = sel.querySelector('option').outerHTML; // garde l'option "Tous"
+    sel.innerHTML = firstOption + values.map(v => `<option value="${escapeHtml(v)}">${escapeHtml(v)}</option>`).join('');
+    if(values.includes(current)) sel.value = current;
+  };
+  fill('rcMatType', uniqueSorted(items.map(it=>it.matType)));
+  fill('rcVoltage', uniqueSorted(items.map(it=>it.voltage)));
+  fill('rcWattage', uniqueSorted(items.map(it=>it.wattage)));
+  fill('rcZones', uniqueSorted(items.map(it=>it.zones)));
+}
+
+function renderRecap(){
+  const fMatType = document.getElementById('rcMatType').value;
+  const fShape = document.getElementById('rcShape').value;
+  const fConnector = document.getElementById('rcConnector').value;
+  const fVoltage = document.getElementById('rcVoltage').value;
+  const fWattage = document.getElementById('rcWattage').value;
+  const fZones = document.getElementById('rcZones').value;
+  const searchTerms = normalizeSearch(document.getElementById('rcSearch').value.trim()).split(/\s+/).filter(Boolean);
+
+  const filtered = items.filter(it=>{
+    if(fMatType && it.matType !== fMatType) return false;
+    if(fShape && (it.shape||'rect') !== fShape) return false;
+    if(fConnector && it.connector !== fConnector) return false;
+    if(fVoltage && it.voltage !== fVoltage) return false;
+    if(fWattage && it.wattage !== fWattage) return false;
+    if(fZones && String(it.zones) !== fZones) return false;
+    if(searchTerms.length){
+      const haystack = itemSearchText(it);
+      if(!searchTerms.every(t => haystack.includes(t))) return false;
+    }
+    return true;
+  });
+
+  // Statistiques sur le résultat filtré
+  const totalQty = filtered.reduce((sum,it)=> sum + (Number(it.qty)||0), 0);
+  const lowStockCount = filtered.filter(it => (Number(it.qty)||0) <= 0).length;
+  const standardCount = filtered.filter(it => it.matType === 'Standard').length;
+  const stretchCount = filtered.filter(it => it.matType === 'Stretchable').length;
+
+  document.getElementById('recapStats').innerHTML = `
+    <div class="stat-card"><div class="stat-value">${filtered.length}</div><div class="stat-label">Article${filtered.length>1?'s':''}</div></div>
+    <div class="stat-card"><div class="stat-value">${totalQty}</div><div class="stat-label">Quantité totale</div></div>
+    <div class="stat-card"><div class="stat-value">${standardCount}</div><div class="stat-label">Standard</div></div>
+    <div class="stat-card"><div class="stat-value">${stretchCount}</div><div class="stat-label">Stretchable</div></div>
+    <div class="stat-card" style="${lowStockCount>0?'border-color:var(--danger);':''}"><div class="stat-value" style="${lowStockCount>0?'color:var(--danger);':''}">${lowStockCount}</div><div class="stat-label">Stock à 0</div></div>
+  `;
+
+  const wrap = document.getElementById('recapTableWrap');
+  if(filtered.length === 0){
+    wrap.innerHTML = '<div class="empty">Aucun article ne correspond à ces filtres.</div>';
+    return;
+  }
+
+  let html = '<div style="overflow-x:auto;"><table><thead><tr><th>Code</th><th>Nom</th><th>Qté</th><th>Tapis</th><th>Voltage</th><th>Wattage</th><th>Taille</th><th>Zones</th><th>Connect.</th><th>Spécificité</th></tr></thead><tbody>';
+  for(const it of filtered){
+    const sizeLabel = it.shape === 'round'
+      ? `Ø ${it.diameterVal||0} ${it.sizeUnit||'mm'}`
+      : `${it.lengthVal||0}×${it.widthVal||0} ${it.sizeUnit||'mm'}`;
+    html += `<tr>
+      <td class="code-cell">${escapeHtml(it.code||'—')}</td>
+      <td>${escapeHtml(it.name)}</td>
+      <td class="${(Number(it.qty)||0)<=0?'low':''}">${it.qty}</td>
+      <td>${escapeHtml(it.matType||'—')}</td>
+      <td>${escapeHtml(it.voltage||'—')}</td>
+      <td>${escapeHtml(it.wattage||'—')}</td>
+      <td>${escapeHtml(sizeLabel)}</td>
+      <td>${escapeHtml(it.zones||'—')}</td>
+      <td>${escapeHtml(it.connector||'—')}</td>
+      <td>${escapeHtml(it.specificity||'—')}</td>
+    </tr>`;
+  }
+  html += '</tbody></table></div>';
+  wrap.innerHTML = html;
+}
+
+['rcMatType','rcShape','rcConnector','rcVoltage','rcWattage','rcZones'].forEach(id=>{
+  document.getElementById(id).addEventListener('change', renderRecap);
+});
+document.getElementById('rcSearch').addEventListener('input', renderRecap);
+
+document.getElementById('btnResetRecapFilters').addEventListener('click', ()=>{
+  ['rcMatType','rcShape','rcConnector','rcVoltage','rcWattage','rcZones'].forEach(id=>{
+    document.getElementById(id).value = '';
+  });
+  document.getElementById('rcSearch').value = '';
+  renderRecap();
+});
+
+document.getElementById('btnExportRecap').addEventListener('click', ()=>{
+  const fMatType = document.getElementById('rcMatType').value;
+  const fShape = document.getElementById('rcShape').value;
+  const fConnector = document.getElementById('rcConnector').value;
+  const fVoltage = document.getElementById('rcVoltage').value;
+  const fWattage = document.getElementById('rcWattage').value;
+  const fZones = document.getElementById('rcZones').value;
+  const searchTerms = normalizeSearch(document.getElementById('rcSearch').value.trim()).split(/\s+/).filter(Boolean);
+
+  const filtered = items.filter(it=>{
+    if(fMatType && it.matType !== fMatType) return false;
+    if(fShape && (it.shape||'rect') !== fShape) return false;
+    if(fConnector && it.connector !== fConnector) return false;
+    if(fVoltage && it.voltage !== fVoltage) return false;
+    if(fWattage && it.wattage !== fWattage) return false;
+    if(fZones && String(it.zones) !== fZones) return false;
+    if(searchTerms.length){
+      const haystack = itemSearchText(it);
+      if(!searchTerms.every(t => haystack.includes(t))) return false;
+    }
+    return true;
+  });
+
+  if(filtered.length === 0){ alert('Aucun article à exporter avec ces filtres.'); return; }
+
+  const header = ['Code','Nom','Quantite','TypeTapis','Voltage','Wattage','Forme','Longueur','Largeur','Diametre','UniteTaille','NombreZones','Connectique','Specificite','Note'];
+  const rows = filtered.map(it=>[it.code,it.name,it.qty,it.matType,it.voltage,it.wattage,it.shape==='round'?'Ronde':'Rect.',it.lengthVal,it.widthVal,it.diameterVal,it.sizeUnit,it.zones,it.connector,it.specificity,it.note]);
+  const csv = [header, ...rows].map(r =>
+    r.map(v => `"${String(v??'').replace(/"/g,'""')}"`).join(',')
+  ).join('\n');
+  const blob = new Blob(['\ufeff'+csv], {type:'text/csv;charset=utf-8;'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  const stamp = new Date().toISOString().slice(0,10);
+  a.href = url; a.download = `recap-stock-${stamp}.csv`;
+  a.click();
+  URL.revokeObjectURL(url);
 });
 
 loadItems();
