@@ -986,7 +986,7 @@ document.getElementById('btnPrintQr').addEventListener('click', ()=>{
   if(!src) return;
   const infoLines = buildItemInfoLines(currentQrItem);
   const infoHtml = infoLines.length
-    ? `<div style="font-family:sans-serif; font-size:13px; margin-top:6px; line-height:1.5;">${infoLines.map(escapeHtml).join('<br>')}</div>`
+    ? `<div style="font-family:sans-serif; font-size:20px; margin-top:12px; line-height:1.6;">${infoLines.map(escapeHtml).join('<br>')}</div>`
     : '';
   const w = window.open('', '_blank');
   w.document.write(`
@@ -998,8 +998,8 @@ document.getElementById('btnPrintQr').addEventListener('click', ()=>{
     </style>
     </head>
     <body>
-      <img src="${src}" style="width:220px;height:220px;"/>
-      <p style="font-family:monospace; font-size:13px; margin-bottom:0;">${escapeHtml(currentQrCode)}</p>
+      <img src="${src}" style="width:280px;height:280px;"/>
+      <p style="font-family:monospace; font-size:20px; font-weight:bold; margin:14px 0 0;">${escapeHtml(currentQrCode)}</p>
       ${infoHtml}
       <script>window.onload = () => window.print();<\/script>
     </body></html>
