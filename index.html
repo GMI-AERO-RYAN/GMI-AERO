@@ -644,7 +644,7 @@ function formatSizeBlock(value, unit){
 function formatInfoLinesHtml(lines){
   return lines.map(line => {
     const escaped = escapeHtml(line);
-    return /^(Taille|Ø)/.test(line) ? `<strong>${escaped}</strong>` : escaped;
+    return /^(Taille|Ø)/.test(line) ? `<span style="font-weight:bold;">${escaped}</span>` : escaped;
   });
 }
 
@@ -666,7 +666,7 @@ function nameWithBoldSize(item){
   }
   return escapeHtml(item.name).replace(
     escapeHtml(sizeBlock),
-    `<strong>${escapeHtml(sizeBlock)}</strong>`
+    `<span style="font-weight:bold;">${escapeHtml(sizeBlock)}</span>`
   );
 }
 
