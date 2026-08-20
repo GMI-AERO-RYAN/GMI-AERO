@@ -110,6 +110,9 @@
     <div class="status" id="scanStatus"></div>
 
     <div class="form-grid" id="formGrid" style="display:none;">
+      <div class="full">
+        <strong id="formTitle" style="font-family:var(--mono); font-size:13px; text-transform:uppercase; letter-spacing:0.5px; color:var(--amber);">Ajouter un article</strong>
+      </div>
       <div>
         <label>Code / référence</label>
         <input id="fCode" placeholder="Scanné automatiquement ou saisi">
@@ -122,7 +125,7 @@
         </div>
       </div>
       <div>
-        <label>Quantité</label>
+        <label id="fQtyLabel">Quantité</label>
         <input id="fQty" type="number" min="0" value="1">
       </div>
       <div>
@@ -286,7 +289,7 @@
     <div id="itemDetailContent" style="margin-top:10px;"></div>
     <div class="row" style="margin-top:14px;">
       <button class="primary" id="btnDetailAddOne">➕ +1 (nouvelle unité trouvée)</button>
-      <button class="ghost" id="btnDetailEdit">✏ Modifier dans le tableau</button>
+      <button class="ghost" id="btnDetailEdit">✏ Modifier cet article</button>
       <button class="ghost" id="btnDetailLabel">🏷 Réimprimer l'étiquette</button>
     </div>
   </div>
@@ -506,43 +509,25 @@ function render(){
 
   let html = '<table class="inv-table"><thead><tr><th>Code</th><th>Nom</th><th>Qté</th><th>Tapis</th><th>Voltage</th><th>Wattage</th><th>Forme</th><th>Longueur</th><th>Largeur</th><th>Ø</th><th>Unité</th><th>Zones</th><th>Connect.</th><th>Spécificité</th><th>Note</th><th></th></tr></thead><tbody>';
   for(const it of filtered){
+    const sizeShapeLabel = it.shape === 'round' ? 'Ronde' : 'Rect.';
     html += `<tr data-id="${it.id}">
       <td class="code-cell" style="max-width:110px; overflow-wrap:anywhere;">${escapeHtml(it.code||'—')}</td>
-      <td><input value="${escapeHtml(it.name)}" data-field="name" style="min-width:160px"></td>
-      <td><input type="number" min="0" value="${it.qty}" data-field="qty" style="width:60px" class="${it.qty<=0?'low':''}"></td>
-      <td>
-        <select data-field="matType" style="width:100px">
-          <option value="Standard" ${it.matType==='Standard'?'selected':''}>Standard</option>
-          <option value="Stretchable" ${it.matType==='Stretchable'?'selected':''}>Stretchable</option>
-        </select>
-      </td>
-      <td><input value="${escapeHtml(it.voltage||'')}" data-field="voltage" style="width:70px" placeholder="V"></td>
-      <td><input value="${escapeHtml(it.wattage||'')}" data-field="wattage" style="width:70px" placeholder="W"></td>
-      <td>
-        <select data-field="shape" style="width:100px">
-          <option value="rect" ${it.shape!=='round'?'selected':''}>Rect.</option>
-          <option value="round" ${it.shape==='round'?'selected':''}>Ronde</option>
-        </select>
-      </td>
-      <td><input type="number" step="any" value="${it.shape==='round' ? '' : (it.lengthVal ?? '')}" data-field="lengthVal" style="width:65px" ${it.shape==='round'?'disabled placeholder="—"':''}></td>
-      <td><input type="number" step="any" value="${it.shape==='round' ? '' : (it.widthVal ?? '')}" data-field="widthVal" style="width:65px" ${it.shape==='round'?'disabled placeholder="—"':''}></td>
-      <td><input type="number" step="any" value="${it.shape==='round' ? (it.diameterVal ?? '') : ''}" data-field="diameterVal" style="width:65px" ${it.shape!=='round'?'disabled placeholder="—"':''}></td>
-      <td>
-        <select data-field="sizeUnit" style="width:60px">
-          <option value="mm" ${it.sizeUnit==='mm'?'selected':''}>mm</option>
-          <option value="in" ${it.sizeUnit==='in'?'selected':''}>in</option>
-        </select>
-      </td>
-      <td><input type="number" min="0" value="${it.zones ?? ''}" data-field="zones" style="width:55px"></td>
-      <td>
-        <select data-field="connector" style="width:65px">
-          <option value="S" ${it.connector==='S'?'selected':''}>S</option>
-          <option value="L" ${it.connector==='L'?'selected':''}>L</option>
-        </select>
-      </td>
-      <td><input value="${escapeHtml(it.specificity||'')}" data-field="specificity" style="min-width:110px"></td>
-      <td><input value="${escapeHtml(it.note||'')}" data-field="note" style="min-width:100px"></td>
-      <td>
+      <td style="min-width:160px;">${nameWithBoldSize(it)}</td>
+      <td class="${(Number(it.qty)||0)<=0?'low':''}">${it.qty}</td>
+      <td>${escapeHtml(it.matType||'—')}</td>
+      <td>${escapeHtml(it.voltage||'—')}</td>
+      <td>${escapeHtml(it.wattage||'—')}</td>
+      <td>${sizeShapeLabel}</td>
+      <td>${it.shape==='round' ? '—' : (it.lengthVal ?? '—')}</td>
+      <td>${it.shape==='round' ? '—' : (it.widthVal ?? '—')}</td>
+      <td>${it.shape==='round' ? (it.diameterVal ?? '—') : '—'}</td>
+      <td>${escapeHtml(it.sizeUnit||'mm')}</td>
+      <td>${it.zones ?? '—'}</td>
+      <td>${escapeHtml(it.connector||'—')}</td>
+      <td>${escapeHtml(it.specificity||'—')}</td>
+      <td>${escapeHtml(it.note||'—')}</td>
+      <td style="white-space:nowrap;">
+        <button class="icon-btn ghost" data-action="edit" title="Modifier">✏</button>
         <button class="icon-btn ghost" data-action="label" title="Étiquette QR">🏷</button>
         <button class="icon-btn ghost" data-action="del" title="Supprimer">🗑</button>
       </td>
@@ -551,17 +536,13 @@ function render(){
   html += '</tbody></table>';
   wrap.innerHTML = '<div style="overflow-x:auto;">' + html + '</div>';
 
-  wrap.querySelectorAll('input[data-field], select[data-field]').forEach(inp=>{
-    inp.addEventListener('change', e=>{
+  wrap.querySelectorAll('[data-action="edit"]').forEach(btn=>{
+    btn.addEventListener('click', e=>{
       const tr = e.target.closest('tr');
       const id = tr.dataset.id;
-      const field = e.target.dataset.field;
       const item = items.find(i=>i.id===id);
       if(!item) return;
-      const numericFields = ['qty','lengthVal','widthVal','diameterVal','zones'];
-      item[field] = numericFields.includes(field) ? Number(e.target.value)||0 : e.target.value;
-      saveItems();
-      render();
+      showEditForm(item);
     });
   });
   wrap.querySelectorAll('[data-action="del"]').forEach(btn=>{
@@ -598,10 +579,14 @@ function escapeHtml(s){
 }
 
 function showForm(prefillCode, prefillData){
+  editingId = null;
   document.getElementById('genPanel').style.display = 'none';
   document.getElementById('checkPanel').style.display = 'none';
   document.getElementById('recapPanel').style.display = 'none';
   document.getElementById('formGrid').style.display = 'grid';
+  document.getElementById('formTitle').textContent = 'Ajouter un article';
+  document.getElementById('btnSaveItem').textContent = "Enregistrer l'article";
+  document.getElementById('fQtyLabel').textContent = 'Quantité';
   const d = prefillData || {};
   document.getElementById('fCode').value = prefillCode || '';
   document.getElementById('fName').value = d.name || '';
@@ -624,7 +609,49 @@ function showForm(prefillCode, prefillData){
   document.getElementById('fNote').value = '';
   document.getElementById('fName').focus();
 }
-function hideForm(){ document.getElementById('formGrid').style.display = 'none'; }
+
+// Ouvre le même formulaire mais en mode "édition" : pré-rempli avec les
+// valeurs actuelles de l'article, et le bouton Enregistrer met à jour cet
+// article précis (au lieu d'en créer un nouveau). Évite les modifications
+// accidentelles au clic direct dans le tableau.
+function showEditForm(item){
+  document.getElementById('genPanel').style.display = 'none';
+  document.getElementById('checkPanel').style.display = 'none';
+  document.getElementById('recapPanel').style.display = 'none';
+  document.getElementById('itemDetailPanel').style.display = 'none';
+  document.getElementById('formGrid').style.display = 'grid';
+  document.getElementById('formGrid').scrollIntoView({behavior:'smooth', block:'start'});
+  document.getElementById('formTitle').textContent = `Modifier "${item.name}"`;
+  document.getElementById('btnSaveItem').textContent = 'Enregistrer les modifications';
+  document.getElementById('fQtyLabel').textContent = 'Quantité (valeur exacte)';
+
+  editingId = item.id;
+  document.getElementById('fCode').value = item.code || '';
+  document.getElementById('fName').value = item.name || '';
+  document.getElementById('fQty').value = item.qty ?? 0;
+  document.getElementById('fMatType').value = item.matType || 'Standard';
+  document.getElementById('fVoltage').value = item.voltage || '';
+  document.getElementById('fWattage').value = item.wattage || '';
+  const shape = item.shape === 'round' ? 'round' : 'rect';
+  document.getElementById('fShape').value = shape;
+  document.getElementById('fSizeRectWrap').style.display = shape === 'round' ? 'none' : 'block';
+  document.getElementById('fSizeRoundWrap').style.display = shape === 'round' ? 'block' : 'none';
+  document.getElementById('fLength').value = item.lengthVal || '';
+  document.getElementById('fWidth').value = item.widthVal || '';
+  document.getElementById('fDiameter').value = item.diameterVal || '';
+  document.getElementById('fSizeUnit').value = item.sizeUnit || 'mm';
+  document.getElementById('fSizeUnitRound').value = item.sizeUnit || 'mm';
+  document.getElementById('fZones').value = item.zones || '';
+  document.getElementById('fConnector').value = item.connector || 'S';
+  document.getElementById('fSpecificity').value = item.specificity || '';
+  document.getElementById('fNote').value = item.note || '';
+  document.getElementById('fName').focus();
+}
+
+function hideForm(){
+  document.getElementById('formGrid').style.display = 'none';
+  editingId = null;
+}
 
 // --- Génération automatique du nom selon la syntaxe GMI HB ---
 // GMI (fixe) + HB (fixe) + C si Stretchable (rien si Standard)
@@ -736,21 +763,33 @@ document.getElementById('btnSaveItem').addEventListener('click', ()=>{
     specificity: document.getElementById('fSpecificity').value.trim(),
     note: document.getElementById('fNote').value.trim()
   };
-  const existing = code ? items.find(it => it.code && it.code === code) : null;
 
-  if(existing){
-    // Code déjà présent -> on fusionne au lieu de dupliquer.
-    existing.qty = (Number(existing.qty)||0) + qty;
-    existing.name = name;
-    Object.assign(existing, fields);
+  if(editingId){
+    // Mode édition : on met à jour CET article précis, la quantité saisie
+    // est la valeur exacte voulue (pas un ajout).
+    const editedItem = items.find(it => it.id === editingId);
+    if(editedItem){
+      editedItem.code = code;
+      editedItem.name = name;
+      editedItem.qty = qty;
+      Object.assign(editedItem, fields);
+    }
   }else{
-    items.push({
-      id: uid(),
-      code,
-      name,
-      qty,
-      ...fields
-    });
+    const existing = code ? items.find(it => it.code && it.code === code) : null;
+    if(existing){
+      // Code déjà présent -> on fusionne au lieu de dupliquer.
+      existing.qty = (Number(existing.qty)||0) + qty;
+      existing.name = name;
+      Object.assign(existing, fields);
+    }else{
+      items.push({
+        id: uid(),
+        code,
+        name,
+        qty,
+        ...fields
+      });
+    }
   }
   saveItems();
   render();
@@ -1221,12 +1260,7 @@ document.getElementById('btnDetailEdit').addEventListener('click', ()=>{
   const item = items.find(i=>i.id===detailItemId);
   if(!item) return;
   document.getElementById('itemDetailPanel').style.display = 'none';
-  const row = document.querySelector(`#tableWrap tr[data-id="${item.id}"]`);
-  if(row){
-    row.scrollIntoView({behavior:'smooth', block:'center'});
-    row.style.outline = '2px solid var(--amber)';
-    setTimeout(()=>{ row.style.outline = ''; }, 2000);
-  }
+  showEditForm(item);
 });
 
 document.getElementById('btnDetailLabel').addEventListener('click', ()=>{
