@@ -640,6 +640,14 @@ function formatSizeBlock(value, unit){
   return String(cm).padStart(3,'0');
 }
 
+// Échappe les lignes d'infos et met en gras celles qui concernent la taille (Taille/Ø).
+function formatInfoLinesHtml(lines){
+  return lines.map(line => {
+    const escaped = escapeHtml(line);
+    return /^(Taille|Ø)/.test(line) ? `<strong>${escaped}</strong>` : escaped;
+  });
+}
+
 function computeSizeBlock(item){
   const unit = item.sizeUnit || 'mm';
   if(item.shape === 'round'){
@@ -1098,7 +1106,7 @@ document.getElementById('btnGenerate').addEventListener('click', ()=>{
   currentQrCode = code;
   const infoLines = buildItemInfoLines(currentQrItem);
   const nameHtml = currentQrItem ? nameWithBoldSize(currentQrItem) : '';
-  const allLinesHtml = [nameHtml, ...infoLines.map(escapeHtml)].filter(Boolean).join('<br>');
+  const allLinesHtml = [nameHtml, ...formatInfoLinesHtml(infoLines)].filter(Boolean).join('<br>');
   document.getElementById('qrInfo').innerHTML = allLinesHtml;
   document.getElementById('qrOutput').style.display = 'block';
 });
@@ -1123,7 +1131,7 @@ document.getElementById('btnPrintQr').addEventListener('click', ()=>{
   if(!src) return;
   const infoLines = buildItemInfoLines(currentQrItem);
   const nameHtml = currentQrItem ? nameWithBoldSize(currentQrItem) : '';
-  const allLinesHtml = [nameHtml, ...infoLines.map(escapeHtml)].filter(Boolean).join('<br>');
+  const allLinesHtml = [nameHtml, ...formatInfoLinesHtml(infoLines)].filter(Boolean).join('<br>');
   const infoHtml = allLinesHtml
     ? `<div style="font-family:sans-serif; font-size:32px; margin-top:20px; line-height:1.7;">${allLinesHtml}</div>`
     : '';
