@@ -640,6 +640,28 @@ function formatSizeBlock(value, unit){
   return String(cm).padStart(3,'0');
 }
 
+function computeSizeBlock(item){
+  const unit = item.sizeUnit || 'mm';
+  if(item.shape === 'round'){
+    return formatSizeBlock(Number(item.diameterVal)||0, unit);
+  }
+  return formatSizeBlock(Number(item.lengthVal)||0, unit) + formatSizeBlock(Number(item.widthVal)||0, unit);
+}
+
+// Retourne le nom de l'article en HTML, avec la partie "taille" en gras si elle
+// est identifiable dans le nom (ex: nom généré via le bouton "🔄 Auto").
+function nameWithBoldSize(item){
+  const escaped = escapeHtml(item.name || '');
+  const sizeBlock = computeSizeBlock(item);
+  if(!sizeBlock || !item.name || !item.name.includes(sizeBlock)){
+    return escaped;
+  }
+  return escapeHtml(item.name).replace(
+    escapeHtml(sizeBlock),
+    `<strong>${escapeHtml(sizeBlock)}</strong>`
+  );
+}
+
 function generateAutoName(){
   const matType = document.getElementById('fMatType').value;
   const shape = document.getElementById('fShape').value;
@@ -1001,7 +1023,6 @@ function genUniqueCode(){
 function buildItemInfoLines(item){
   if(!item) return [];
   const lines = [];
-  lines.push(item.name);
   if(item.matType) lines.push('Type : ' + item.matType);
   if(item.voltage) lines.push('Voltage : ' + item.voltage);
   if(item.wattage) lines.push('Wattage : ' + item.wattage);
@@ -1076,9 +1097,9 @@ document.getElementById('btnGenerate').addEventListener('click', ()=>{
   });
   currentQrCode = code;
   const infoLines = buildItemInfoLines(currentQrItem);
-  document.getElementById('qrInfo').innerHTML = infoLines.length
-    ? infoLines.map(escapeHtml).join('<br>')
-    : '';
+  const nameHtml = currentQrItem ? nameWithBoldSize(currentQrItem) : '';
+  const allLinesHtml = [nameHtml, ...infoLines.map(escapeHtml)].filter(Boolean).join('<br>');
+  document.getElementById('qrInfo').innerHTML = allLinesHtml;
   document.getElementById('qrOutput').style.display = 'block';
 });
 
@@ -1101,8 +1122,10 @@ document.getElementById('btnPrintQr').addEventListener('click', ()=>{
   const src = img ? img.src : (canvas ? canvas.toDataURL('image/png') : null);
   if(!src) return;
   const infoLines = buildItemInfoLines(currentQrItem);
-  const infoHtml = infoLines.length
-    ? `<div style="font-family:sans-serif; font-size:32px; margin-top:20px; line-height:1.7;">${infoLines.map(escapeHtml).join('<br>')}</div>`
+  const nameHtml = currentQrItem ? nameWithBoldSize(currentQrItem) : '';
+  const allLinesHtml = [nameHtml, ...infoLines.map(escapeHtml)].filter(Boolean).join('<br>');
+  const infoHtml = allLinesHtml
+    ? `<div style="font-family:sans-serif; font-size:32px; margin-top:20px; line-height:1.7;">${allLinesHtml}</div>`
     : '';
   const w = window.open('', '_blank');
   w.document.write(`
@@ -1144,7 +1167,7 @@ function showItemDetail(item){
 
   const rows = [
     ['Code', item.code || '—'],
-    ['Nom', item.name],
+    ['Nom', nameWithBoldSize(item), true],
     ['Quantité en stock', item.qty],
     ['Type de tapis', item.matType || '—'],
     ['Voltage', item.voltage || '—'],
@@ -1158,10 +1181,10 @@ function showItemDetail(item){
 
   document.getElementById('itemDetailContent').innerHTML =
     '<table style="width:100%;">' +
-    rows.map(([label, val]) => `
+    rows.map(([label, val, isHtml]) => `
       <tr>
         <td style="padding:5px 8px 5px 0; color:var(--ink-dim); font-size:12px; white-space:nowrap; vertical-align:top;">${escapeHtml(label)}</td>
-        <td style="padding:5px 0; font-size:14px;">${escapeHtml(val)}</td>
+        <td style="padding:5px 0; font-size:14px;">${isHtml ? val : escapeHtml(val)}</td>
       </tr>
     `).join('') +
     '</table>';
@@ -1526,7 +1549,7 @@ function renderRecap(){
       : `${it.lengthVal||0}×${it.widthVal||0} ${it.sizeUnit||'mm'}`;
     html += `<tr>
       <td class="code-cell">${escapeHtml(it.code||'—')}</td>
-      <td>${escapeHtml(it.name)}</td>
+      <td>${nameWithBoldSize(it)}</td>
       <td class="${(Number(it.qty)||0)<=0?'low':''}">${it.qty}</td>
       <td>${escapeHtml(it.matType||'—')}</td>
       <td>${escapeHtml(it.voltage||'—')}</td>
