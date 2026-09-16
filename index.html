@@ -507,7 +507,7 @@ function render(){
     return;
   }
 
-  let html = '<table class="inv-table"><thead><tr><th>Code</th><th>Nom</th><th>Qté</th><th>Tapis</th><th>Voltage</th><th>Wattage</th><th>Forme</th><th>Longueur</th><th>Largeur</th><th>Ø</th><th>Unité</th><th>Zones</th><th>Connect.</th><th>Spécificité</th><th>Note</th><th></th></tr></thead><tbody>';
+  let html = '<table class="inv-table"><thead><tr><th>Code</th><th>Nom</th><th>Qté</th><th>Tapis</th><th>Voltage</th><th>Wattage</th><th>W/cm²</th><th>Forme</th><th>Longueur</th><th>Largeur</th><th>Ø</th><th>Unité</th><th>Zones</th><th>Connect.</th><th>Spécificité</th><th>Note</th><th></th></tr></thead><tbody>';
   for(const it of filtered){
     const sizeShapeLabel = it.shape === 'round' ? 'Ronde' : 'Rect.';
     html += `<tr data-id="${it.id}">
@@ -517,6 +517,7 @@ function render(){
       <td>${escapeHtml(it.matType||'—')}</td>
       <td>${escapeHtml(it.voltage||'—')}</td>
       <td>${escapeHtml(it.wattage||'—')}</td>
+      <td>${escapeHtml(formatWattPerCm2(it))}</td>
       <td>${sizeShapeLabel}</td>
       <td>${it.shape==='round' ? '—' : (it.lengthVal ?? '—')}</td>
       <td>${it.shape==='round' ? '—' : (it.widthVal ?? '—')}</td>
@@ -673,6 +674,35 @@ function formatInfoLinesHtml(lines){
     const escaped = escapeHtml(line);
     return /^(Taille|Ø)/.test(line) ? `<span style="font-weight:bold;">${escaped}</span>` : escaped;
   });
+}
+
+// --- Calcul de la densité de puissance (W/cm²) ---
+function computeAreaCm2(item){
+  const unit = item.sizeUnit || 'mm';
+  const toCm = (v) => unit === 'in' ? v * 2.54 : v / 10; // conversion vers cm
+  if(item.shape === 'round'){
+    const d = toCm(Number(item.diameterVal) || 0);
+    if(!d) return null;
+    const r = d / 2;
+    return Math.PI * r * r;
+  }
+  const l = toCm(Number(item.lengthVal) || 0);
+  const w = toCm(Number(item.widthVal) || 0);
+  if(!l || !w) return null;
+  return l * w;
+}
+
+function computeWattPerCm2(item){
+  const wattMatch = String(item.wattage || '').replace(',', '.').match(/[\d.]+/);
+  const watt = wattMatch ? parseFloat(wattMatch[0]) : null;
+  const area = computeAreaCm2(item);
+  if(!watt || !area) return null;
+  return watt / area;
+}
+
+function formatWattPerCm2(item){
+  const v = computeWattPerCm2(item);
+  return v === null ? '—' : v.toFixed(2) + ' W/cm²';
 }
 
 function computeSizeBlock(item){
@@ -1073,6 +1103,8 @@ function buildItemInfoLines(item){
   if(item.matType) lines.push('Type : ' + item.matType);
   if(item.voltage) lines.push('Voltage : ' + item.voltage);
   if(item.wattage) lines.push('Wattage : ' + item.wattage);
+  const wpc = computeWattPerCm2(item);
+  if(wpc !== null) lines.push('Densité : ' + wpc.toFixed(2) + ' W/cm²');
   if(item.shape === 'round'){
     if(item.diameterVal) lines.push('Ø ' + item.diameterVal + ' ' + (item.sizeUnit||'mm'));
   }else{
@@ -1219,6 +1251,7 @@ function showItemDetail(item){
     ['Type de tapis', item.matType || '—'],
     ['Voltage', item.voltage || '—'],
     ['Wattage', item.wattage || '—'],
+    ['Densité (W/cm²)', formatWattPerCm2(item), true],
     ['Taille', shapeLabel],
     ['Zones', item.zones || '—'],
     ['Connectique', item.connector || '—'],
@@ -1584,7 +1617,7 @@ function renderRecap(){
     return;
   }
 
-  let html = '<div style="overflow-x:auto;"><table><thead><tr><th>Code</th><th>Nom</th><th>Qté</th><th>Tapis</th><th>Voltage</th><th>Wattage</th><th>Taille</th><th>Zones</th><th>Connect.</th><th>Spécificité</th></tr></thead><tbody>';
+  let html = '<div style="overflow-x:auto;"><table><thead><tr><th>Code</th><th>Nom</th><th>Qté</th><th>Tapis</th><th>Voltage</th><th>Wattage</th><th>Taille</th><th>W/cm²</th><th>Zones</th><th>Connect.</th><th>Spécificité</th></tr></thead><tbody>';
   for(const it of filtered){
     const sizeLabel = it.shape === 'round'
       ? `Ø ${it.diameterVal||0} ${it.sizeUnit||'mm'}`
@@ -1597,6 +1630,7 @@ function renderRecap(){
       <td>${escapeHtml(it.voltage||'—')}</td>
       <td>${escapeHtml(it.wattage||'—')}</td>
       <td>${escapeHtml(sizeLabel)}</td>
+      <td>${escapeHtml(formatWattPerCm2(it))}</td>
       <td>${escapeHtml(it.zones||'—')}</td>
       <td>${escapeHtml(it.connector||'—')}</td>
       <td>${escapeHtml(it.specificity||'—')}</td>
