@@ -481,10 +481,12 @@ function normalizeSearch(s){
 
 function itemSearchText(it){
   const shapeLabel = it.shape === 'round' ? 'ronde diametre ø' : 'rectangulaire longueur largeur';
+  const density = computeWattPerCm2(it);
+  const densityText = density === null ? '' : density.toFixed(2);
   return normalizeSearch([
     it.name, it.code, it.matType, it.voltage, it.wattage,
     shapeLabel, it.lengthVal, it.widthVal, it.diameterVal, it.sizeUnit,
-    it.zones, it.connector, it.specificity, it.note
+    it.zones, it.connector, it.specificity, it.note, densityText
   ].join(' '));
 }
 
