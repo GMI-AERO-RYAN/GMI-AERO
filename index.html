@@ -550,6 +550,9 @@ function render(){
     btn.addEventListener('click', e=>{
       const tr = e.target.closest('tr');
       const id = tr.dataset.id;
+      const item = items.find(i=>i.id===id);
+      if(!item) return;
+      if(!confirm(`Supprimer "${item.name}" de l'inventaire ? Cette action ne peut pas être annulée.`)) return;
       items = items.filter(i=>i.id!==id);
       saveItems();
       render();
