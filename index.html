@@ -836,19 +836,46 @@ document.getElementById('btnClearSearch').addEventListener('click', ()=>{
   render();
 });
 
-document.getElementById('btnExport').addEventListener('click', ()=>{
-  if(items.length===0){ alert('Aucun article à exporter.'); return; }
-  const header = ['Code','Nom','Quantite','TypeTapis','Voltage','Wattage','Forme','Longueur','Largeur','Diametre','UniteTaille','NombreZones','Connectique','Specificite','Note'];
-  const rows = items.map(it=>[it.code,it.name,it.qty,it.matType,it.voltage,it.wattage,it.shape==='round'?'Ronde':'Rect.',it.lengthVal,it.widthVal,it.diameterVal,it.sizeUnit,it.zones,it.connector,it.specificity,it.note]);
-  const csv = [header, ...rows].map(r =>
+// En-têtes et ligne de données lisibles pour les exports CSV (taille combinée,
+// pas de "0" pour les champs non pertinents selon la forme du tapis).
+const CSV_HEADERS = ['Code','Nom','Quantité','Type de tapis','Voltage','Wattage','Taille','Densité (W/cm²)','Nombre de zones','Connectique','Spécificité','Note'];
+
+function buildCsvRow(it){
+  const sizeLabel = it.shape === 'round'
+    ? (it.diameterVal ? `Ø ${it.diameterVal} ${it.sizeUnit||'mm'}` : '')
+    : ((it.lengthVal || it.widthVal) ? `${it.lengthVal||0} × ${it.widthVal||0} ${it.sizeUnit||'mm'}` : '');
+  const density = computeWattPerCm2(it);
+  return [
+    it.code || '',
+    it.name || '',
+    it.qty ?? 0,
+    it.matType || '',
+    it.voltage || '',
+    it.wattage || '',
+    sizeLabel,
+    density === null ? '' : density.toFixed(2),
+    it.zones || '',
+    it.connector || '',
+    it.specificity || '',
+    it.note || ''
+  ];
+}
+
+function downloadCsv(filename, rows){
+  const csv = [CSV_HEADERS, ...rows].map(r =>
     r.map(v => `"${String(v??'').replace(/"/g,'""')}"`).join(',')
   ).join('\n');
   const blob = new Blob(['\ufeff'+csv], {type:'text/csv;charset=utf-8;'});
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
-  a.href = url; a.download = 'inventaire.csv';
+  a.href = url; a.download = filename;
   a.click();
   URL.revokeObjectURL(url);
+}
+
+document.getElementById('btnExport').addEventListener('click', ()=>{
+  if(items.length===0){ alert('Aucun article à exporter.'); return; }
+  downloadCsv('inventaire.csv', items.map(buildCsvRow));
 });
 
 // --- Scan caméra ---
@@ -1681,18 +1708,8 @@ document.getElementById('btnExportRecap').addEventListener('click', ()=>{
 
   if(filtered.length === 0){ alert('Aucun article à exporter avec ces filtres.'); return; }
 
-  const header = ['Code','Nom','Quantite','TypeTapis','Voltage','Wattage','Forme','Longueur','Largeur','Diametre','UniteTaille','NombreZones','Connectique','Specificite','Note'];
-  const rows = filtered.map(it=>[it.code,it.name,it.qty,it.matType,it.voltage,it.wattage,it.shape==='round'?'Ronde':'Rect.',it.lengthVal,it.widthVal,it.diameterVal,it.sizeUnit,it.zones,it.connector,it.specificity,it.note]);
-  const csv = [header, ...rows].map(r =>
-    r.map(v => `"${String(v??'').replace(/"/g,'""')}"`).join(',')
-  ).join('\n');
-  const blob = new Blob(['\ufeff'+csv], {type:'text/csv;charset=utf-8;'});
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
   const stamp = new Date().toISOString().slice(0,10);
-  a.href = url; a.download = `recap-stock-${stamp}.csv`;
-  a.click();
-  URL.revokeObjectURL(url);
+  downloadCsv(`recap-stock-${stamp}.csv`, filtered.map(buildCsvRow));
 });
 
 loadItems();
