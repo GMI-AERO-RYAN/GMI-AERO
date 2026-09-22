@@ -481,8 +481,8 @@ function normalizeSearch(s){
 
 function itemSearchText(it){
   const shapeLabel = it.shape === 'round' ? 'ronde diametre ø' : 'rectangulaire longueur largeur';
-  const density = computeWattPerCm2(it);
-  const densityText = density === null ? '' : density.toFixed(2);
+  const density = computeDensity(it);
+  const densityText = density === null ? '' : density.value.toFixed(2);
   return normalizeSearch([
     it.name, it.code, it.matType, it.voltage, it.wattage,
     shapeLabel, it.lengthVal, it.widthVal, it.diameterVal, it.sizeUnit,
@@ -510,7 +510,7 @@ function render(){
     return;
   }
 
-  let html = '<table class="inv-table"><thead><tr><th>Code</th><th>Nom</th><th>Qté</th><th>Tapis</th><th>Voltage</th><th>Wattage</th><th>W/cm²</th><th>Forme</th><th>Longueur</th><th>Largeur</th><th>Ø</th><th>Unité</th><th>Zones</th><th>Connect.</th><th>Spécificité</th><th>Note</th><th></th></tr></thead><tbody>';
+  let html = '<table class="inv-table"><thead><tr><th>Code</th><th>Nom</th><th>Qté</th><th>Tapis</th><th>Voltage</th><th>Wattage</th><th>Densité</th><th>Forme</th><th>Longueur</th><th>Largeur</th><th>Ø</th><th>Unité</th><th>Zones</th><th>Connect.</th><th>Spécificité</th><th>Note</th><th></th></tr></thead><tbody>';
   for(const it of filtered){
     const sizeShapeLabel = it.shape === 'round' ? 'Ronde' : 'Rect.';
     html += `<tr data-id="${it.id}">
@@ -520,7 +520,7 @@ function render(){
       <td>${escapeHtml(it.matType||'—')}</td>
       <td>${escapeHtml(it.voltage||'—')}</td>
       <td>${escapeHtml(it.wattage||'—')}</td>
-      <td>${escapeHtml(formatWattPerCm2(it))}</td>
+      <td>${escapeHtml(formatDensity(it))}</td>
       <td>${sizeShapeLabel}</td>
       <td>${it.shape==='round' ? '—' : (it.lengthVal ?? '—')}</td>
       <td>${it.shape==='round' ? '—' : (it.widthVal ?? '—')}</td>
@@ -683,32 +683,38 @@ function formatInfoLinesHtml(lines){
 }
 
 // --- Calcul de la densité de puissance (W/cm²) ---
-function computeAreaCm2(item){
-  const unit = item.sizeUnit || 'mm';
-  const toCm = (v) => unit === 'in' ? v * 2.54 : v / 10; // conversion vers cm
+// Calcule la surface dans l'unité native de l'article : cm² si la taille est
+// en mm (conversion mm->cm), ou in² directement si la taille est déjà en pouces
+// (pas de conversion forcée vers cm dans ce cas).
+function computeAreaNative(item){
+  const unit = item.sizeUnit === 'in' ? 'in' : 'mm';
+  const toNative = (v) => unit === 'in' ? v : v / 10; // mm -> cm, ou pouces inchangés
+  let area;
   if(item.shape === 'round'){
-    const d = toCm(Number(item.diameterVal) || 0);
+    const d = toNative(Number(item.diameterVal) || 0);
     if(!d) return null;
     const r = d / 2;
-    return Math.PI * r * r;
+    area = Math.PI * r * r;
+  }else{
+    const l = toNative(Number(item.lengthVal) || 0);
+    const w = toNative(Number(item.widthVal) || 0);
+    if(!l || !w) return null;
+    area = l * w;
   }
-  const l = toCm(Number(item.lengthVal) || 0);
-  const w = toCm(Number(item.widthVal) || 0);
-  if(!l || !w) return null;
-  return l * w;
+  return { area, unitLabel: unit === 'in' ? 'W/in²' : 'W/cm²' };
 }
 
-function computeWattPerCm2(item){
+function computeDensity(item){
   const wattMatch = String(item.wattage || '').replace(',', '.').match(/[\d.]+/);
   const watt = wattMatch ? parseFloat(wattMatch[0]) : null;
-  const area = computeAreaCm2(item);
-  if(!watt || !area) return null;
-  return watt / area;
+  const areaInfo = computeAreaNative(item);
+  if(!watt || !areaInfo || !areaInfo.area) return null;
+  return { value: watt / areaInfo.area, unitLabel: areaInfo.unitLabel };
 }
 
-function formatWattPerCm2(item){
-  const v = computeWattPerCm2(item);
-  return v === null ? '—' : v.toFixed(2) + ' W/cm²';
+function formatDensity(item){
+  const d = computeDensity(item);
+  return d === null ? '—' : d.value.toFixed(2) + ' ' + d.unitLabel;
 }
 
 function computeSizeBlock(item){
@@ -841,13 +847,13 @@ document.getElementById('btnClearSearch').addEventListener('click', ()=>{
 
 // En-têtes et ligne de données lisibles pour les exports (taille combinée,
 // pas de "0" pour les champs non pertinents selon la forme du tapis).
-const EXPORT_HEADERS = ['Code','Nom','Quantité','Type de tapis','Voltage','Wattage','Taille','Densité (W/cm²)','Nombre de zones','Connectique','Spécificité','Note'];
+const EXPORT_HEADERS = ['Code','Nom','Quantité','Type de tapis','Voltage','Wattage','Taille','Densité','Nombre de zones','Connectique','Spécificité','Note'];
 
 function buildExportRow(it){
   const sizeLabel = it.shape === 'round'
     ? (it.diameterVal ? `Ø ${it.diameterVal} ${it.sizeUnit||'mm'}` : '')
     : ((it.lengthVal || it.widthVal) ? `${it.lengthVal||0} × ${it.widthVal||0} ${it.sizeUnit||'mm'}` : '');
-  const density = computeWattPerCm2(it);
+  const density = computeDensity(it);
   return [
     it.code || '',
     it.name || '',
@@ -856,7 +862,7 @@ function buildExportRow(it){
     it.voltage || '',
     it.wattage || '',
     sizeLabel,
-    density === null ? '' : Number(density.toFixed(2)),
+    density === null ? '' : `${density.value.toFixed(2)} ${density.unitLabel}`,
     it.zones ? Number(it.zones) : '',
     it.connector || '',
     it.specificity || '',
@@ -1145,8 +1151,8 @@ function buildItemInfoLines(item){
   if(item.matType) lines.push('Type : ' + item.matType);
   if(item.voltage) lines.push('Voltage : ' + item.voltage);
   if(item.wattage) lines.push('Wattage : ' + item.wattage);
-  const wpc = computeWattPerCm2(item);
-  if(wpc !== null) lines.push('Densité : ' + wpc.toFixed(2) + ' W/cm²');
+  const density = computeDensity(item);
+  if(density !== null) lines.push('Densité : ' + density.value.toFixed(2) + ' ' + density.unitLabel);
   if(item.shape === 'round'){
     if(item.diameterVal) lines.push('Ø ' + item.diameterVal + ' ' + (item.sizeUnit||'mm'));
   }else{
@@ -1293,7 +1299,7 @@ function showItemDetail(item){
     ['Type de tapis', item.matType || '—'],
     ['Voltage', item.voltage || '—'],
     ['Wattage', item.wattage || '—'],
-    ['Densité (W/cm²)', formatWattPerCm2(item), true],
+    ['Densité', formatDensity(item), true],
     ['Taille', shapeLabel],
     ['Zones', item.zones || '—'],
     ['Connectique', item.connector || '—'],
@@ -1659,7 +1665,7 @@ function renderRecap(){
     return;
   }
 
-  let html = '<div style="overflow-x:auto;"><table><thead><tr><th>Code</th><th>Nom</th><th>Qté</th><th>Tapis</th><th>Voltage</th><th>Wattage</th><th>Taille</th><th>W/cm²</th><th>Zones</th><th>Connect.</th><th>Spécificité</th></tr></thead><tbody>';
+  let html = '<div style="overflow-x:auto;"><table><thead><tr><th>Code</th><th>Nom</th><th>Qté</th><th>Tapis</th><th>Voltage</th><th>Wattage</th><th>Taille</th><th>Densité</th><th>Zones</th><th>Connect.</th><th>Spécificité</th></tr></thead><tbody>';
   for(const it of filtered){
     const sizeLabel = it.shape === 'round'
       ? `Ø ${it.diameterVal||0} ${it.sizeUnit||'mm'}`
@@ -1672,7 +1678,7 @@ function renderRecap(){
       <td>${escapeHtml(it.voltage||'—')}</td>
       <td>${escapeHtml(it.wattage||'—')}</td>
       <td>${escapeHtml(sizeLabel)}</td>
-      <td>${escapeHtml(formatWattPerCm2(it))}</td>
+      <td>${escapeHtml(formatDensity(it))}</td>
       <td>${escapeHtml(it.zones||'—')}</td>
       <td>${escapeHtml(it.connector||'—')}</td>
       <td>${escapeHtml(it.specificity||'—')}</td>
